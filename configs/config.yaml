@@ -1,0 +1,14 @@
+dataset:
+  target_dataset: "tweets_hashtag"
+
+  tweets_hashtag:
+    description:
+    file: "data/raw/tweets_hashtag.csv"
+
+  nyc_taxi:
+    description:
+    file:
+
+  nexmark:
+    description:
+    file:
