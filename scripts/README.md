@@ -38,8 +38,14 @@ scripts/
 ## Usage
 
 Most scripts can be run directly:
+
+For The Tweet csv Generator
+1. Dry-run 
+2. Run
 ```bash
-python scripts/data/generate_tweet_data.py
+python scripts/data/generate_tweet_data.py --mode
+
+python scripts/data/generate_tweet_data.py --mode run
 ```
 
 Or via Make commands:
