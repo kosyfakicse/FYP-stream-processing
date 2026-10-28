@@ -1,0 +1,19 @@
+{
+    "record_count": 100,
+    "user_count": 8,
+    "hashtags": [
+        "#AI", "#UST", "#PYTHON", "#PROVENANCE",
+        "#STREAMING", "#DATA", "#FLINK", "#KAFKA"
+    ],
+    "templates": [
+        "Loving {hashtag}!",
+        "{hashtag} is awesome",
+        "Check out {hashtag}",
+        "Learning {hashtag} today",
+        "{hashtag} {hashtag2}",
+        "Just tried {hashtag} and its amazing",
+        "Who else uses {hashtag}?",
+        "{hashtag} for the win"
+    ],
+    "users_prefix": "user_"
+}
