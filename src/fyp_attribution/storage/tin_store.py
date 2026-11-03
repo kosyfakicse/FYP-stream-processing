@@ -1,22 +1,37 @@
 import duckdb
 import os
-import json
+import threading
 from loguru import logger
-from typing import Optional, Dict, List, Any
+from typing import Optional
 
 class TINStore:
     # Database service class for the TIN persistence layer using DuckDB.
 
+    _instance = None
+    _lock = threading.Lock()
+
+    # Singleton pattern implementation to ensure only one instance of TINStore exists
+    # This is important for managing the database connection and ensuring thread safety.
+    def __new__(cls, *args, **kwargs):
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super(TINStore, cls).__new__(cls)
+                cls._instance._initialized = False
+            return cls._instance
+        
     def __init__(self, db_path: str = "data/attribution.duckdb") -> None:
-        # Initialize the database connection and create the necessary tables if they do not exist
+        # The database file will be created at the specified path if it does not already exist.
+        if getattr(self, "_initialized", False):
+            return
+
+        # Ensure the directory for the database file exists
         os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
         self.db_path = db_path
         self.conn = duckdb.connect(self.db_path)
         self._initialize_db()
+        self._initialized = True
 
     def _initialize_db(self) -> None:
-        "Initializes the database by creating necessary tables if they do not exist."
-
         # Create the runs table if it does not exist
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS runs (
@@ -52,7 +67,7 @@ class TINStore:
         # Create the tin_interactions table if it does not exist
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS tin_interactions (
-                interaction_id INTEGER PRIMARY KEY,
+                interaction_id BIGINT PRIMARY KEY,
                 run_id VARCHAR NOT NULL,
                 source_vertex VARCHAR NOT NULL,
                 target_vertex VARCHAR NOT NULL,
@@ -65,7 +80,7 @@ class TINStore:
         # Create the tin_states table if it does not exist
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS tin_states (
-                state_id INTEGER PRIMARY KEY,
+                state_id BIGINT PRIMARY KEY,
                 run_id VARCHAR NOT NULL,
                 vertex_id VARCHAR NOT NULL,
                 time_start BIGINT NOT NULL,
@@ -79,7 +94,7 @@ class TINStore:
         # Create the window_outputs table if it does not exist
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS window_outputs (
-                output_id INTEGER PRIMARY KEY,
+                output_id BIGINT PRIMARY KEY,
                 run_id VARCHAR NOT NULL,
                 vertex_id VARCHAR NOT NULL,
                 window_start BIGINT NOT NULL,
@@ -91,71 +106,60 @@ class TINStore:
 
         logger.info("All TIN tables have been successfully created.")
 
-    def insert_run(self, run_id: str, started_at: str, dataset: str, config_json: Optional[str], provenance_enabled: bool) -> None:
+    def insert_run(self, run_id: str, started_at: str, dataset: str, config_json: Optional[str], provenance_enabled: bool) -> str:
         # Inserts a new run into the runs table
         self.conn.execute("""
             INSERT INTO runs (run_id, started_at, dataset, config_json, provenance_enabled)
             VALUES (?, ?, ?, ?, ?);
         """, (run_id, started_at, dataset, config_json, provenance_enabled))
+        return run_id
 
-    def insert_vertex(self, vertex_id: str, run_id: str, vertex_type: str, description: Optional[str]) -> None:
+    def insert_vertex(self, vertex_id: str, run_id: str, vertex_type: str, description: Optional[str]) -> str:
         # Inserts a new vertex into the tin_vertices table
         self.conn.execute("""
             INSERT INTO tin_vertices (vertex_id, run_id, vertex_type, description)
             VALUES (?, ?, ?, ?);
         """, (vertex_id, run_id, vertex_type, description))
+        return vertex_id
 
-    def insert_edge(self, source_vertex: str, target_vertex: str, run_id: str) -> None:
+    def insert_edge(self, source_vertex: str, target_vertex: str, run_id: str) -> bool:
         # Inserts a new edge into the tin_edges table
         self.conn.execute("""
             INSERT INTO tin_edges (source_vertex, target_vertex, run_id)
             VALUES (?, ?, ?);
         """, (source_vertex, target_vertex, run_id))
+        return True
 
-    def insert_interaction(self, interaction_id: int, run_id: str, source_vertex: str, target_vertex: str, timestamp: int, quantity: int, attribution_json: Dict[str, Any]) -> None:
+    def insert_interaction(self, interaction_id: int, run_id: str, source_vertex: str, target_vertex: str, timestamp: int, quantity: int, attribution_json: str) -> int:
         # Inserts a new interaction into the tin_interactions table
         self.conn.execute("""
             INSERT INTO tin_interactions (interaction_id, run_id, source_vertex, target_vertex, timestamp, quantity, attribution_json)
             VALUES (?, ?, ?, ?, ?, ?, ?);
-        """, (interaction_id, run_id, source_vertex, target_vertex, timestamp, quantity, json.dumps(attribution_json)))
+        """, (interaction_id, run_id, source_vertex, target_vertex, timestamp, quantity, attribution_json))
+        return interaction_id
 
-    def insert_state(self, state_id: int, run_id: str, vertex_id: str, time_start: int, time_end: Optional[int], quantity: int, attribution_json: Dict[str, Any], fired_at: Optional[int]) -> None:
+    def insert_state(self, state_id: int, run_id: str, vertex_id: str, time_start: int, time_end: Optional[int], quantity: int, attribution_json: str, fired_at: Optional[int]) -> int:
         # Inserts a new state into the tin_states table
         self.conn.execute("""
             INSERT INTO tin_states (state_id, run_id, vertex_id, time_start, time_end, quantity, attribution_json, fired_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?);
-        """, (state_id, run_id, vertex_id, time_start, time_end, quantity, json.dumps(attribution_json), fired_at))
+        """, (state_id, run_id, vertex_id, time_start, time_end, quantity, attribution_json, fired_at))
+        return state_id
 
-    def insert_window_output(self, output_id: int, run_id: str, vertex_id: str, window_start: int, window_end: int, output_count: int, attribution_json: Dict[str, Any]) -> None:
+    def insert_window_output(self, output_id: int, run_id: str, vertex_id: str, window_start: int, window_end: int, output_count: int, attribution_json: str) -> int:
         # Inserts a new window output into the window_outputs table
         self.conn.execute("""
             INSERT INTO window_outputs (output_id, run_id, vertex_id, window_start, window_end, output_count, attribution_json)
             VALUES (?, ?, ?, ?, ?, ?, ?);
-        """, (output_id, run_id, vertex_id, window_start, window_end, output_count, json.dumps(attribution_json)))
+        """, (output_id, run_id, vertex_id, window_start, window_end, output_count, attribution_json))
+        return output_id
 
     def close(self) -> None:
         # Closes the database connection
         if self.conn:
             self.conn.close()
+            self.conn = None
+            self._initialized = False
+            # Reset the singleton instance to allow for a new connection in future instances
+            TINStore._instance = None 
             logger.info("DuckDB connection closed.")
-
-if __name__ == "__main__":
-    # Test the TINStore class
-    store = TINStore(db_path="data/test_attribution.duckdb")
-    
-    # Test inserting a window output
-    store.insert_window_output(
-        output_id=1,
-        run_id="run-test-01",
-        vertex_id="W1",
-        window_start=1735696800000,
-        window_end=1735696860000,
-        output_count=4,
-        attribution_json={"user_1": 2, "user_2": 1, "user_4": 1}
-    )
-    
-    # Query the data to verify
-    results = store.conn.execute("SELECT * FROM window_outputs").fetchall()
-    print(f"Data in DB: {results}")
-    
-    store.close()

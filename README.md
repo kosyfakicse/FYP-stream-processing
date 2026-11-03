@@ -163,6 +163,7 @@ FYP-stream-processing/
 |       |   |-- README.md
 |       |   |-- __init__.py
 |       |   |-- tin_store.py            # TIN persistence layer
+|       |   |-- provenance_service.py   # Service Layer
 |       |   +-- query_engine.py         # Backward attribution queries (BFS)
 |       |
 |       |-- dashboard/                  # Streamlit UI

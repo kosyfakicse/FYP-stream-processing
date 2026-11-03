@@ -10,6 +10,12 @@ This directory contains unit tests for individual components.
 - `test_config.py` — Configuration loading (Week 3)
 - `test_dataset_loader.py` — Dataset loading (Week 3)
 
+## Coverage Status
+
+- `provenance_service.py`: **100%**
+- `tin_store.py`: **100%**
+- `models.py`: **100%**
+
 ## Running Unit Tests
 
 ```bash
