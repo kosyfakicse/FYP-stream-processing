@@ -1,0 +1,1 @@
+Dataset -> Adapter -> Kafka -> Flink -> DBWriter -> db file

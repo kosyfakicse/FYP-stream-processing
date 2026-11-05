@@ -2,7 +2,7 @@
 
 import sys
 from typing import Callable
-from pyflink.common.time import Time
+from pyflink.common.time import Time, Duration
 from pyflink.common import WatermarkStrategy
 from pyflink.common.configuration import Configuration
 from pyflink.common.watermark_strategy import TimestampAssigner
@@ -31,24 +31,8 @@ class CustomTimestampAssigner(TimestampAssigner):
 
 
 from pyflink.datastream.functions import AggregateFunction
-
-from pyflink.datastream.functions import ProcessWindowFunction
-
-
 class AttributionCount(AggregateFunction):
     """
-    
-    def create_accumulator(self):
-        return 0
-
-    def add(self, value, acc):
-        return acc + 1
-
-    def get_result(self, value):
-        return value
-    
-    def merge(self, acc_a, acc_b):
-        return acc_a + acc_b
     """
 
     def create_accumulator(self):
@@ -68,9 +52,6 @@ class AttributionCount(AggregateFunction):
             "user_id": acc_a["user_id"],
             "count": acc_a["count"] + acc_b["count"]
         }
-
-
-    
 
 
 class FlinkProcessor:
@@ -113,7 +94,8 @@ class FlinkProcessor:
     def assign_timestamp_and_watermarks(self, stream: DataStream, assigner: TimestampAssigner):
         return stream.assign_timestamps_and_watermarks(
             WatermarkStrategy
-            .for_monotonous_timestamps()
+            #.for_monotonous_timestamps()
+            .for_bounded_out_of_orderness(Duration.of_seconds(10))
             .with_timestamp_assigner(assigner)
         ) 
 

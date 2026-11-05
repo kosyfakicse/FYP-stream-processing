@@ -5,6 +5,7 @@ from src.fyp_attribution.pipeline import DatasetLoader, FlinkProcessor, CustomTi
 
 from src.fyp_attribution.core import TweetContribution
 
+
 def main():
 
     #
@@ -34,38 +35,64 @@ def main():
     fp = FlinkProcessor(flink_config=APP_CONFIG.flink)
     fp.setup_environment()
 
-    # Build pipeline
-    stream = fp.from_collection(dataset_rows_list)
-    stream = fp.assign_timestamp_and_watermarks(stream, CustomTimestampAssigner())
-    stream = fp.filter(stream, has_python)
+    # Filtered results
+    stream1 = fp.from_collection(dataset_rows_list)
+    stream1 = fp.assign_timestamp_and_watermarks(stream1, CustomTimestampAssigner())
+    stream1 = fp.filter(stream1, has_python)
+    filtered_result = fp.execute_and_collect(stream1)
 
-    filtered_result = fp.execute_and_collect(stream)
-
-    #with stream.execute_and_collect() as results:
-     #   print("After Filter:")
-      #  for i, result in enumerate(results):
-       #     print(f"[{i}]:{result}")
-        #print()
-    
-    stream = fp.key_by(stream, key)
-    stream = fp.window_tumbling(stream, 60)
-    stream = fp.aggregate(stream, AttributionCount())
-    windowed_result = fp.execute_and_collect(stream)
-    
-    #result = stream.aggregate(AttributionCount())
-    #
-    #temp = None
-    #with result.execute_and_collect() as results:
-    #    temp = list(results)
-    print("\n--- Job completed ---")
-
+    print("\n--- Pipeline 1 ---")
     print(f"filtered result: ")
     for i, record in enumerate(filtered_result):
         print(f"{i}: {record}")
 
-    print(f"windowed result: ")
-    for i, record in enumerate(filtered_result):
+    # Keyed results
+    stream2 = fp.key_by(stream1, key)
+    keyed_result = fp.execute_and_collect(stream2)
+
+    import pickle
+    print(f"Keyed result: ")
+    for i, row in enumerate(keyed_result):
+        record = (pickle.loads(row.f0) , pickle.loads(row.f1)[1]  ,pickle.loads(row.f1)[2])
         print(f"{i}: {record}")
+
+
+    # Window output
+    # Pipeline 3: Windowed aggregation (separate pipeline)
+    fp.setup_environment()
+    dataset_rows_list.sort(key=lambda x: x[2])
+    stream3 = fp.from_collection(dataset_rows_list)
+    stream3 = fp.assign_timestamp_and_watermarks(stream3, CustomTimestampAssigner())
+    stream3 = fp.filter(stream3, has_python)
+    stream3 = fp.key_by(stream3, key)
+    stream3 = fp.window_tumbling(stream3, 60)
+    stream3 = fp.aggregate(stream3, AttributionCount())
+    print("\n--- Pipeline 3: Windowed ---")
+    stream3.print()
+    fp.execute("Windowed Job")
+
+
+
+    """
+    # Pipeline 2: Windowed aggregation (separate pipeline)
+    fp.setup_environment()  # Reset environment
+    stream2 = fp.from_collection(dataset_rows_list)
+    stream2 = fp.assign_timestamp_and_watermarks(stream2, CustomTimestampAssigner())
+    stream2 = fp.filter(stream2, has_python)
+    stream2 = fp.key_by(stream2, key)
+    stream2 = fp.window_tumbling(stream2, 60)
+    stream2 = fp.aggregate(stream2, AttributionCount())
+
+    # Use print + execute for event time windows
+    stream2.print()
+    fp.execute("Windowed Job")
+
+    
+    """
+
+    #print(f"windowed result: ")
+    #for i, record in enumerate(windowed_result):
+     #   print(f"{i}: {record}")
 
 
 if __name__ == "__main__":
