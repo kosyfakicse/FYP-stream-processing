@@ -15,7 +15,7 @@ dataset:
 
 kafka:
   bootstrap_servers: "localhost:9092"
-  topic: "tweets_input"
+  topic: "tweets-storage"
   producer:
     batch_size: 100
     linger_ms: 5
@@ -23,7 +23,7 @@ kafka:
 
 flink:
   mode: 1
-  parallelism: 1
+  parallelism: 4
   checkpoint_interval: 10000
   window_size_seconds: 60
 

@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Iterator
 from loguru import logger
 
-from fyp_attribution.core.config import load_config
+from src.fyp_attribution.core.config import load_config
 
 class DatasetLoader:
     """Load Dataset from CSV and send to Kafka"""

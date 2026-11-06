@@ -1,6 +1,6 @@
 {
-    "record_count": 100,
-    "user_count": 8,
+    "record_count": 1000,
+    "user_count": 3,
     "hashtags": [
         "#AI", "#UST", "#PYTHON", "#PROVENANCE",
         "#STREAMING", "#DATA", "#FLINK", "#KAFKA"
@@ -15,5 +15,9 @@
         "Who else uses {hashtag}?",
         "{hashtag} for the win"
     ],
-    "users_prefix": "user_"
+    "users_prefix": "user_",
+    "time_range": {
+        "start_time": "2026-11-05 10:00:00",
+        "end_time": "2026-11-05 10:15:00"
+    }
 }

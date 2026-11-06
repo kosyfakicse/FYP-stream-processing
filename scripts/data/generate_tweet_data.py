@@ -13,6 +13,7 @@ import csv
 import json
 import random
 import sys
+from datetime import datetime
 from pathlib import Path
 
 # Paths
@@ -21,9 +22,9 @@ PROJECT_ROOT = SCRIPT_DIR.parent.parent
 CONFIG_PATH = PROJECT_ROOT / "configs" / "tweets_config.json"
 OUTPUT_PATH = PROJECT_ROOT / "data" / "raw" / "tweet_hashtag.csv"
 
-# Base timestamp: 2025-01-01 00:00:00 UTC in milliseconds
-BASE_TIMESTAMP = 1_735_689_600_000
-TIMESTAMP_STEP_MS = 1_000  # 1 second between records
+# Default time range (fallback if not in config)
+DEFAULT_START_TIME = "2026-11-05 10:00:00"
+DEFAULT_END_TIME = "2026-11-05 10:01:00"
 
 
 def load_config() -> dict:
@@ -41,6 +42,13 @@ def load_config() -> dict:
             print(f"Error: Missing required config key: {key}")
             sys.exit(1)
 
+    # Set default time range if not provided
+    if "time_range" not in config:
+        config["time_range"] = {
+            "start_time": DEFAULT_START_TIME,
+            "end_time": DEFAULT_END_TIME
+        }
+
     return config
 
 
@@ -51,6 +59,20 @@ def generate_tweet_text(templates: list[str], hashtags: list[str]) -> str:
     hashtag2 = random.choice(hashtags)
     text = template.replace("{hashtag}", hashtag1).replace("{hashtag2}", hashtag2)
     return text
+
+
+def parse_time_to_ms(time_str: str) -> int:
+    """Convert datetime string to milliseconds timestamp.
+    
+    Args:
+        time_str: Datetime string in format 'YYYY-MM-DD HH:MM:SS'
+    
+    Returns:
+        Timestamp in milliseconds
+    """
+    dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+    # Convert to milliseconds (Unix timestamp * 1000)
+    return int(dt.timestamp() * 1000)
 
 
 def generate_records(
@@ -71,14 +93,28 @@ def generate_records(
     hashtags = config["hashtags"]
     templates = config["templates"]
     prefix = config["users_prefix"]
+    time_range = config["time_range"]
 
     users = [f"{prefix}{i}" for i in range(1, user_count + 1)]
+
+    # Parse time range to milliseconds
+    start_ms = parse_time_to_ms(time_range["start_time"])
+    end_ms = parse_time_to_ms(time_range["end_time"])
+    
+    if start_ms >= end_ms:
+        print(f"Error: start_time must be before end_time")
+        sys.exit(1)
+    
+    time_span_ms = end_ms - start_ms
 
     records = []
     for i in range(record_count):
         user_id = random.choice(users)
         text = generate_tweet_text(templates, hashtags)
-        timestamp = BASE_TIMESTAMP + (i * TIMESTAMP_STEP_MS)
+        
+        # Distribute timestamps evenly across the time range
+        # Each record gets a timestamp at position i/record_count of the range
+        timestamp = start_ms + int((i / record_count) * time_span_ms)
 
         records.append({
             "user_id": user_id,
@@ -93,8 +129,11 @@ def print_dry_run(records: list[dict], config: dict) -> None:
     """Print generated records to console without writing file."""
     rc = config["record_count"]
     uc = config["user_count"]
+    time_range = config["time_range"]
+    
     print("=== Generate Tweet Data (DRY RUN) ===")
     print(f"Config: record count={rc}, user count={uc}")
+    print(f"Time range: {time_range['start_time']} to {time_range['end_time']}")
     print(f"Hashtags: {config['hashtags']}")
     print()
 
