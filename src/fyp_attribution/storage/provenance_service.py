@@ -1,87 +1,45 @@
 import json
-import time
 import uuid
 from loguru import logger
 from src.fyp_attribution.core.models import (
-    InsertRunDTO, InsertVertexDTO, InsertEdgeDTO, 
-    InsertInteractionDTO, InsertStateDTO, WindowOutputDTO
+    RunModel, VertexModel, EdgeModel, 
+    InteractionModel, StateModel, WindowOutputModel
 )
 from src.fyp_attribution.storage.tin_store import TINStore
 
 class ProvenanceService:
-    # Service Layer responsible for handling provenance data operations and interactions with the TINStore.
+    """
+    Service Layer responsible for handling provenance data operations.
+    """
+    # The ProvenanceService class acts as a service layer that interacts with the TINStore to handle provenance data operations. 
+    # It provides methods to save runs, vertices, edges, interactions, states, and window outputs. 
+    # Each method takes a corresponding data model as input and delegates the insertion operation to the TINStore instance. 
+    # The service also handles the conversion of attribution JSON data to string format before passing it to the store's insert methods.
     def __init__(self):
         self.store = TINStore()
 
-    # Service methods for saving different types of provenance data to the database.
-    def save_run(self, data: InsertRunDTO) -> str:
-        logger.debug(f"Saving run: {data.run_id}")
-        return self.store.insert_run(
-            run_id=data.run_id,
-            started_at=data.started_at,
-            dataset=data.dataset,
-            config_json=data.config_json,
-            provenance_enabled=data.provenance_enabled
-        )
+    def save_run(self, data: RunModel) -> RunModel | str:
+        return self.store.insert_run(data)
 
-    def save_vertex(self, data: InsertVertexDTO) -> str:
-        return self.store.insert_vertex(
-            vertex_id=data.vertex_id,
-            run_id=data.run_id,
-            vertex_type=data.vertex_type,
-            description=data.description
-        )
+    def save_vertex(self, data: VertexModel) -> VertexModel | str:
+        return self.store.insert_vertex(data)
 
-    def save_edge(self, data: InsertEdgeDTO) -> bool:
-        return self.store.insert_edge(
-            source_vertex=data.source_vertex,
-            target_vertex=data.target_vertex,
-            run_id=data.run_id
-        )
+    def save_edge(self, data: EdgeModel) -> EdgeModel | str:
+        return self.store.insert_edge(data)
 
-    def save_interaction(self, data: InsertInteractionDTO) -> int:
-        # Convert the attribution dictionary to a JSON string for storage
+    # save_interaction, save_state, and save_window_output methods are responsible for saving interactions, states, and window outputs respectively. 
+    # They convert the attribution_json to a string before passing it to the store's insert methods.
+    def save_interaction(self, data: InteractionModel) -> InteractionModel | str:
         attr_str = json.dumps(data.attribution_json)
-        return self.store.insert_interaction(
-            interaction_id=data.interaction_id,
-            run_id=data.run_id,
-            source_vertex=data.source_vertex,
-            target_vertex=data.target_vertex,
-            timestamp=data.timestamp,
-            quantity=data.quantity,
-            attribution_json=attr_str
-        )
-    
-    def save_state(self, data: InsertStateDTO) -> int:
-        # Convert the attribution dictionary to a JSON string for storage
-        attr_str = json.dumps(data.attribution_json)
-        return self.store.insert_state(
-            state_id=data.state_id,
-            run_id=data.run_id,
-            vertex_id=data.vertex_id,
-            time_start=data.time_start,
-            time_end=data.time_end,
-            quantity=data.quantity,
-            attribution_json=attr_str,
-            fired_at=data.fired_at
-        )
+        return self.store.insert_interaction(data, attr_str)
 
-    def save_window_output(self, data: WindowOutputDTO) -> int:
-        # Generate a unique output_id using UUID and ensure it's within the BIGINT range
+    def save_state(self, data: StateModel) -> StateModel | str:
+        attr_str = json.dumps(data.attribution_json)
+        return self.store.insert_state(data, attr_str)
+
+    def save_window_output(self, data: WindowOutputModel) -> WindowOutputModel | str:
         output_id = uuid.uuid4().int & ((1 << 63) - 1)
+        logger.info(f"Service: Generated output_id={output_id} for run={data.run_id}")
         
-        # Convert the attribution dictionary to a JSON string for storage
         attr_str = json.dumps(data.attribution_json)
-        
-        logger.info(f"Service: Generating output_id={output_id} for run={data.run_id}")
-        
-        return self.store.insert_window_output(
-            output_id=output_id,
-            run_id=data.run_id,
-            vertex_id=data.vertex_id,
-            window_start=data.window_start,
-            window_end=data.window_end,
-            output_count=data.output_count,
-            attribution_json=attr_str
-        )
-    
+        return self.store.insert_window_output(output_id, data, attr_str)

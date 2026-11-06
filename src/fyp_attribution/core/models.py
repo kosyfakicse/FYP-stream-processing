@@ -1,8 +1,8 @@
 from pydantic import BaseModel
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
-class InsertRunDTO(BaseModel):
-    # Data Transfer Object for inserting a run
+class RunModel(BaseModel):
+    # Data model for the 'runs' table
     run_id: str
     started_at: str
     dataset: str
@@ -10,21 +10,21 @@ class InsertRunDTO(BaseModel):
     provenance_enabled: bool
     finished_at: Optional[str] = None
 
-class InsertVertexDTO(BaseModel):
-    # Data Transfer Object for inserting a vertex
+class VertexModel(BaseModel):
+    # Data model for the 'tin_vertices' table
     vertex_id: str
     run_id: str
     vertex_type: str
     description: Optional[str] = None
 
-class InsertEdgeDTO(BaseModel):
-    # Data Transfer Object for inserting an edge
+class EdgeModel(BaseModel):
+    # Data model for the 'tin_edges' table
     source_vertex: str
     target_vertex: str
     run_id: str
 
-class InsertInteractionDTO(BaseModel):
-    # Data Transfer Object for inserting an interaction
+class InteractionModel(BaseModel):
+    # Data model for the 'tin_interactions' table
     interaction_id: int
     run_id: str
     source_vertex: str
@@ -33,8 +33,8 @@ class InsertInteractionDTO(BaseModel):
     quantity: int
     attribution_json: Dict[str, int]
 
-class InsertStateDTO(BaseModel):
-    # Data Transfer Object for inserting a state
+class StateModel(BaseModel):
+    # Data model for the 'tin_states' table
     state_id: int
     run_id: str
     vertex_id: str
@@ -44,8 +44,8 @@ class InsertStateDTO(BaseModel):
     attribution_json: Dict[str, int]
     fired_at: Optional[int] = None
 
-class WindowOutputDTO(BaseModel):
-    # Data Transfer Object for Window Output
+class WindowOutputModel(BaseModel):
+    # Data model for the 'window_outputs' table
     run_id: str
     vertex_id: str
     window_start: int
