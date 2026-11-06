@@ -15,7 +15,7 @@ dataset:
 
 kafka:
   bootstrap_servers: "localhost:9092"
-  topic: "tweets_input"
+  topic: "tweets-storage"
   producer:
     batch_size: 100
     linger_ms: 5

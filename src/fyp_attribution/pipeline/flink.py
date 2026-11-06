@@ -1,12 +1,11 @@
 from collections import Counter
 from typing import Iterable
-from pyflink.common import Types, WatermarkStrategy, Time, Encoder
+import json
+
+from pyflink.datastream.functions import AggregateFunction
 from pyflink.common.watermark_strategy import TimestampAssigner
-from pyflink.datastream import StreamExecutionEnvironment, ProcessWindowFunction
-from pyflink.datastream.window import TumblingEventTimeWindows, TimeWindow, TumblingProcessingTimeWindows
-from pyflink.datastream.execution_mode import RuntimeExecutionMode
-from src.fyp_attribution.pipeline import DatasetLoader
-from src.fyp_attribution.core import load_config
+from pyflink.datastream import ProcessWindowFunction
+from pyflink.datastream.window import TimeWindow
 
 
 class TweetTimestampAssigner(TimestampAssigner):
@@ -25,7 +24,7 @@ class CountWindowProcessFunction(ProcessWindowFunction[tuple, tuple, str, TimeWi
                 elements: Iterable[tuple]) -> Iterable[tuple]:
         return [(key, len([e for e in elements]), context.window().start, context.window().end)]
 
-import json
+
 class HashtagAttributionProcessFunction(ProcessWindowFunction):
     def process(self, key, context, elements):
         user_id = key
@@ -33,72 +32,45 @@ class HashtagAttributionProcessFunction(ProcessWindowFunction):
         window_end = context.window().end
         
         hashtag_counts = Counter()
+        element_count = 0
         
         for record in elements:
-            uid, hashtags, timestamp = record
+            uid, hashtags_json, timestamp = record
+            # Parse JSON string back to list
+            hashtags = json.loads(hashtags_json)
             hashtag_counts.update(hashtags)
+            element_count += 1
         
         # Convert to JSON string
         hashtag_json = json.dumps(dict(hashtag_counts))
-        # Example: '{"PYTHON": 3, "DATA": 2}'
+        
+        # Log window trigger
+        import datetime
+        print(f"[WINDOW] user={user_id}, elements={element_count}, "
+              f"window={datetime.datetime.fromtimestamp(window_start/1000)} to "
+              f"{datetime.datetime.fromtimestamp(window_end/1000)}, "
+              f"hashtags={hashtag_json}")
         
         return [(user_id, hashtag_json, window_start, window_end)]
 
+class AttributionCount(AggregateFunction):
+    """
+    """
 
-
-import re
-def extract_hashtags(record) -> tuple:
-    user_id, text, timestamp = record
+    def create_accumulator(self):
+        return {"user_id": None, "count": 0}
     
-    # Find all words starting with #
-    hashtags = re.findall(r'#(\w+)', text)
-    return (user_id, hashtags, timestamp) 
+    def add(self, value, acc):
+        user_id = value[0]
+        acc["user_id"] = user_id
+        acc["count"] += 1
+        return acc
     
-def key(record):
-    return record[0]
-
-def has_python(record) -> bool:
-    user_id, hashtags, timestamp = record
-    return "python" in str(hashtags).lower()
-
-def all(record):
-    return True
-
-
-
-def main():
-
-    APP_CONFIG = load_config()
-    # Load dataset
-    ds_loader = DatasetLoader()
-    dataset_header, dataset_rows = ds_loader.read_csv()
-    dataset_rows_list = list(dataset_rows)
-
-    env = StreamExecutionEnvironment.get_execution_environment()
-    env.set_runtime_mode(RuntimeExecutionMode.STREAMING)
-    env.set_parallelism(1)
-
-    data_stream = env.from_collection(
-        collection=dataset_rows_list,
-        type_info=Types.TUPLE([Types.STRING(), Types.STRING(), Types.LONG()])
-    )
-
-    # define the watermark strategy
-    watermark_strategy = WatermarkStrategy.for_monotonous_timestamps() \
-        .with_timestamp_assigner(TweetTimestampAssigner())
-
-    ds = data_stream.assign_timestamps_and_watermarks(watermark_strategy) \
-        .map(extract_hashtags) \
-        .filter(all) \
-        .key_by(key, key_type=Types.STRING()) \
-        .window(TumblingEventTimeWindows.of(Time.seconds(300))) \
-        .process(HashtagAttributionProcessFunction(),
-                 Types.TUPLE([Types.STRING(), Types.STRING(), Types.LONG(), Types.LONG()])) 
-
-    ds.print()
-    env.execute()
+    def get_result(self, acc):
+        return acc
     
-    
-if __name__ == "__main__":
-    main()
-
+    def merge(self, acc_a, acc_b):
+        return {
+            "user_id": acc_a["user_id"],
+            "count": acc_a["count"] + acc_b["count"]
+        }

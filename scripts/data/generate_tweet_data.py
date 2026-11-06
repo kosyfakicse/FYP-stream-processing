@@ -24,7 +24,7 @@ OUTPUT_PATH = PROJECT_ROOT / "data" / "raw" / "tweet_hashtag.csv"
 
 # Default time range (fallback if not in config)
 DEFAULT_START_TIME = "2026-11-05 10:00:00"
-DEFAULT_END_TIME = "2026-11-05 10:15:00"
+DEFAULT_END_TIME = "2026-11-05 10:01:00"
 
 
 def load_config() -> dict:

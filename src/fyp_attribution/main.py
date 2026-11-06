@@ -1,99 +1,135 @@
-"""Main entry point for the FYP attribution pipeline."""
+from pyflink.common import Types, WatermarkStrategy, Time
+from pyflink.common.configuration import Configuration
+from pyflink.datastream import StreamExecutionEnvironment, OutputTag
+from pyflink.datastream.window import TumblingProcessingTimeWindows
+from pyflink.datastream.execution_mode import RuntimeExecutionMode 
+import re
+import sys
+import json
 
-from src.fyp_attribution.core.config import load_config
-from src.fyp_attribution.pipeline import DatasetLoader, FlinkProcessor, CustomTimestampAssigner, AttributionCount
+from src.fyp_attribution.pipeline import DatasetLoader
+from src.fyp_attribution.core import load_config
+from src.fyp_attribution.pipeline import (
+    TweetTimestampAssigner,
+    HashtagAttributionProcessFunction,
+    get_kafka_source
+)
 
-from src.fyp_attribution.core import TweetContribution
+def parse_json(raw):
+    try:
+        data = json.loads(raw)
+        return (data['user_id'], data['text'], data['timestamp'])
+    except Exception as e:
+        print(f"Parse error: {e}")
+        return None
+    
+def extract_hashtags(record) -> tuple:
+    user_id, text, timestamp = record
+    
+    # Find all words starting with #
+    hashtags = re.findall(r'#(\w+)', text)
+    # Convert list to JSON string for PyFlink serialization
+    return (user_id, json.dumps(hashtags), timestamp) 
+    
+def key(record):
+    return record[0]
 
+def log_before_window(record):
+    """Log records before entering window."""
+    with open("window_debug.log", "a") as f:
+        f.write(f"[BEFORE_WINDOW] {record}\n")
+    return record
+
+def has_python(record) -> bool:
+    user_id, hashtags, timestamp = record
+    return "python" in str(hashtags).lower()
+
+def temp(record):
+    return True
+
+# Debug logging functions
+def log_parsed(record):
+    """Log parsed JSON records."""
+    if record:
+        user_id, text, timestamp = record
+        print(f"[PARSE] user={user_id}, text={text[:30]}..., ts={timestamp}", flush=True)
+    return record
+
+def log_hashtags(record):
+    """Log extracted hashtags."""
+    user_id, hashtags_json, timestamp = record
+    print(f"[HASHTAG] user={user_id}, hashtags={hashtags_json}, ts={timestamp}", flush=True)
+    return record
+
+def log_keyed(record):
+    """Log keyed records."""
+    print(f"[KEY] record={record}", flush=True)
+    return record[0]
 
 def main():
 
-    #
-    filtered_result = None
-    windowed_result = None
+    try:
+        # 1. Load config
+        config = load_config("configs/config.yaml")
 
-    # Load configuration
-    APP_CONFIG = load_config()
+        # 2. Configure PyFlink
+        flink_config = Configuration()
+        flink_config.set_string("python.executable", sys.executable)
+                
+        # Add Kafka JAR
+        jar_path = config.project_root / config.kafka.sql_connector_jar
+        jar_uri = f"file:///{str(jar_path).replace(chr(92), '/')}"
+        flink_config.set_string("pipeline.jars", jar_uri)
+                
+        # Windows stability settings
+        flink_config.set_string("taskmanager.numberOfTaskSlots", "1")
+        flink_config.set_string("parallelism.default", "1")
+        
+        env = StreamExecutionEnvironment.get_execution_environment(flink_config)
+        env.set_parallelism(1)  # Force parallelism=1 for Windows stability
 
-    # Load dataset
-    ds_loader = DatasetLoader()
-    dataset_header, dataset_rows = ds_loader.read_csv()
-    dataset_rows_list = list(dataset_rows)
+        # 3. Create Kafka streaming source
+        kafka_source = get_kafka_source(
+            config.kafka.topic,
+            config.kafka.bootstrap_servers,
+            config.kafka.consumer_group
+        )
+        
+        watermark_strategy = WatermarkStrategy.for_monotonous_timestamps() \
+            .with_timestamp_assigner(TweetTimestampAssigner())
+        
+        data_stream = env.from_source(
+            source=kafka_source,
+            watermark_strategy=watermark_strategy,
+            source_name="Kafka tweets Source"
+        )
 
-    print(f"Headers: {dataset_header}")
-    print(f"Loaded {len(dataset_rows_list)} records")
+        # 4. Process stream with windowing
+        print("\n[INFO] Starting stream processing...")
+        print("[INFO] Using 5-second PROCESSING TIME windows for TESTING")
+        print("[INFO] Windows will trigger every 5 seconds based on system clock\n")
+        
+        ds = data_stream \
+            .map(parse_json, output_type=Types.TUPLE([Types.STRING(), Types.STRING(), Types.LONG()])) \
+            .filter(lambda x: x is not None) \
+            .map(extract_hashtags, output_type=Types.TUPLE([Types.STRING(), Types.STRING(), Types.LONG()])) \
+            .map(log_before_window, output_type=Types.TUPLE([Types.STRING(), Types.STRING(), Types.LONG()])) \
+            .key_by(key, key_type=Types.STRING()) \
+            .window(TumblingProcessingTimeWindows.of(Time.seconds(5))) \
+            .process(HashtagAttributionProcessFunction(),
+                    Types.TUPLE([Types.STRING(), Types.STRING(), Types.LONG(), Types.LONG()]))
 
-    # Define operators
-    def key(record):
-        return record[0]
-
-    def has_python(record) -> bool:
-        user_id, text, timestamp = record
-        return "python" in text.lower()
-
-    # Setup Flink processor
-    fp = FlinkProcessor(flink_config=APP_CONFIG.flink)
-    fp.setup_environment()
-
-    # Filtered results
-    stream1 = fp.from_collection(dataset_rows_list)
-    stream1 = fp.assign_timestamp_and_watermarks(stream1, CustomTimestampAssigner())
-    stream1 = fp.filter(stream1, has_python)
-    filtered_result = fp.execute_and_collect(stream1)
-
-    print("\n--- Pipeline 1 ---")
-    print(f"filtered result: ")
-    for i, record in enumerate(filtered_result):
-        print(f"{i}: {record}")
-
-    # Keyed results
-    stream2 = fp.key_by(stream1, key)
-    keyed_result = fp.execute_and_collect(stream2)
-
-    import pickle
-    print(f"Keyed result: ")
-    for i, row in enumerate(keyed_result):
-        record = (pickle.loads(row.f0) , pickle.loads(row.f1)[1]  ,pickle.loads(row.f1)[2])
-        print(f"{i}: {record}")
-
-
-    # Window output
-    # Pipeline 3: Windowed aggregation (separate pipeline)
-    fp.setup_environment()
-    dataset_rows_list.sort(key=lambda x: x[2])
-    stream3 = fp.from_collection(dataset_rows_list)
-    stream3 = fp.assign_timestamp_and_watermarks(stream3, CustomTimestampAssigner())
-    stream3 = fp.filter(stream3, has_python)
-    stream3 = fp.key_by(stream3, key)
-    stream3 = fp.window_tumbling(stream3, 60)
-    stream3 = fp.aggregate(stream3, AttributionCount())
-    print("\n--- Pipeline 3: Windowed ---")
-    stream3.print()
-    fp.execute("Windowed Job")
-
-
-
-    """
-    # Pipeline 2: Windowed aggregation (separate pipeline)
-    fp.setup_environment()  # Reset environment
-    stream2 = fp.from_collection(dataset_rows_list)
-    stream2 = fp.assign_timestamp_and_watermarks(stream2, CustomTimestampAssigner())
-    stream2 = fp.filter(stream2, has_python)
-    stream2 = fp.key_by(stream2, key)
-    stream2 = fp.window_tumbling(stream2, 60)
-    stream2 = fp.aggregate(stream2, AttributionCount())
-
-    # Use print + execute for event time windows
-    stream2.print()
-    fp.execute("Windowed Job")
+        print("[INFO] Executing job... (will stream continuously)\n")
+        ds.print()
+        env.execute("Kafka Hashtag Attribution")
 
     
-    """
-
-    #print(f"windowed result: ")
-    #for i, record in enumerate(windowed_result):
-     #   print(f"{i}: {record}")
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
     main()
+
