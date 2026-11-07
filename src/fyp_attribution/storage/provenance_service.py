@@ -18,28 +18,44 @@ class ProvenanceService:
     def __init__(self):
         self.store = TINStore()
 
-    def save_run(self, data: RunModel) -> RunModel | str:
+    def save_run(self, data: RunModel) -> RunModel:
         return self.store.insert_run(data)
 
-    def save_vertex(self, data: VertexModel) -> VertexModel | str:
+    def save_vertex(self, data: VertexModel) -> VertexModel:
         return self.store.insert_vertex(data)
 
-    def save_edge(self, data: EdgeModel) -> EdgeModel | str:
+    def save_edge(self, data: EdgeModel) -> EdgeModel:
         return self.store.insert_edge(data)
 
     # save_interaction, save_state, and save_window_output methods are responsible for saving interactions, states, and window outputs respectively. 
     # They convert the attribution_json to a string before passing it to the store's insert methods.
-    def save_interaction(self, data: InteractionModel) -> InteractionModel | str:
+    def save_interaction(self, data: InteractionModel) -> InteractionModel:
         attr_str = json.dumps(data.attribution_json)
         return self.store.insert_interaction(data, attr_str)
 
-    def save_state(self, data: StateModel) -> StateModel | str:
+    def save_state(self, data: StateModel) -> StateModel:
         attr_str = json.dumps(data.attribution_json)
         return self.store.insert_state(data, attr_str)
 
-    def save_window_output(self, data: WindowOutputModel) -> WindowOutputModel | str:
+    def save_window_output(self, data: WindowOutputModel) -> WindowOutputModel:
         output_id = uuid.uuid4().int & ((1 << 63) - 1)
-        logger.info(f"Service: Generated output_id={output_id} for run={data.run_id}")
-        
+        data.output_id = output_id 
         attr_str = json.dumps(data.attribution_json)
-        return self.store.insert_window_output(output_id, data, attr_str)
+        self.store.insert_window_output(output_id, data, attr_str)
+        return data
+
+    # bulk_save_window_outputs method allows for the bulk saving of multiple window outputs.
+    def bulk_save_window_outputs(self, models: list[WindowOutputModel]) -> list[WindowOutputModel]:
+        records_to_insert = []
+        for data in models:
+            output_id = uuid.uuid4().int & ((1 << 63) - 1)
+            data.output_id = output_id
+            attr_str = json.dumps(data.attribution_json)
+            records_to_insert.append(
+                    (output_id, data.run_id, data.vertex_id, data.window_start, 
+                    data.window_end, data.output_count, attr_str)
+                )
+            
+        self.store.bulk_insert_window_outputs(records_to_insert)
+        
+        return models

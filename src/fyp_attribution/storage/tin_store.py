@@ -33,8 +33,7 @@ class TINStore:
         self.conn = duckdb.connect(self.db_path)
         
         # Concurrency Control for Flink multi-threading
-        self._write_lock = threading.Lock()
-        
+        self._write_lock = threading.Lock()    
         self._initialize_db()
         self._initialized = True
         logger.info("DuckDB Connection Initialized (Singleton).")
@@ -115,7 +114,7 @@ class TINStore:
         logger.info("All TIN tables have been successfully created.")
 
     # write methods for each table, returning the inserted model or an error message
-    def insert_run(self, run: RunModel) -> RunModel | str:
+    def insert_run(self, run: RunModel) -> RunModel:
         try:
             with self._write_lock:
                 self.conn.execute("""
@@ -124,9 +123,9 @@ class TINStore:
                 """, (run.run_id, run.started_at, run.dataset, run.config_json, run.provenance_enabled))
             return run
         except Exception as e:
-            return f"Error inserting run {run.run_id}: {str(e)}"
+            raise RuntimeError(f"Error inserting run {run.run_id}: {str(e)}") from e
 
-    def insert_vertex(self, vertex: VertexModel) -> VertexModel | str:
+    def insert_vertex(self, vertex: VertexModel) -> VertexModel:
         try:
             with self._write_lock:
                 self.conn.execute("""
@@ -135,9 +134,9 @@ class TINStore:
                 """, (vertex.vertex_id, vertex.run_id, vertex.vertex_type, vertex.description))
             return vertex
         except Exception as e:
-            return f"Error inserting vertex {vertex.vertex_id}: {str(e)}"
+            raise RuntimeError(f"Error inserting vertex {vertex.vertex_id}: {str(e)}") from e
 
-    def insert_edge(self, edge: EdgeModel) -> EdgeModel | str:
+    def insert_edge(self, edge: EdgeModel) -> EdgeModel:
         try:
             with self._write_lock:
                 self.conn.execute("""
@@ -146,9 +145,9 @@ class TINStore:
                 """, (edge.source_vertex, edge.target_vertex, edge.run_id))
             return edge
         except Exception as e:
-            return f"Error inserting edge {edge.source_vertex}->{edge.target_vertex}: {str(e)}"
+            raise RuntimeError(f"Error inserting edge {edge.source_vertex}->{edge.target_vertex}: {str(e)}") from e
 
-    def insert_interaction(self, interaction: InteractionModel, attr_str: str) -> InteractionModel | str:
+    def insert_interaction(self, interaction: InteractionModel, attr_str: str) -> InteractionModel:
         try:
             with self._write_lock:
                 self.conn.execute("""
@@ -157,9 +156,9 @@ class TINStore:
                 """, (interaction.interaction_id, interaction.run_id, interaction.source_vertex, interaction.target_vertex, interaction.timestamp, interaction.quantity, attr_str))
             return interaction
         except Exception as e:
-            return f"Error inserting interaction {interaction.interaction_id}: {str(e)}"
+            raise RuntimeError(f"Error inserting interaction {interaction.interaction_id}: {str(e)}") from e
 
-    def insert_state(self, state: StateModel, attr_str: str) -> StateModel | str:
+    def insert_state(self, state: StateModel, attr_str: str) -> StateModel:
         try:
             with self._write_lock:
                 self.conn.execute("""
@@ -168,9 +167,9 @@ class TINStore:
                 """, (state.state_id, state.run_id, state.vertex_id, state.time_start, state.time_end, state.quantity, attr_str, state.fired_at))
             return state
         except Exception as e:
-            return f"Error inserting state {state.state_id}: {str(e)}"
+            raise RuntimeError(f"Error inserting state {state.state_id}: {str(e)}") from e
 
-    def insert_window_output(self, output_id: int, output: WindowOutputModel, attr_str: str) -> WindowOutputModel | str:
+    def insert_window_output(self, output_id: int, output: WindowOutputModel, attr_str: str) -> WindowOutputModel:
         try:
             with self._write_lock:
                 self.conn.execute("""
@@ -179,7 +178,19 @@ class TINStore:
                 """, (output_id, output.run_id, output.vertex_id, output.window_start, output.window_end, output.output_count, attr_str))
             return output
         except Exception as e:
-            return f"Error inserting window output {output_id}: {str(e)}"
+            raise RuntimeError(f"Error inserting window output {output_id}: {str(e)}") from e
+
+    # Bulk insert method for window outputs, allowing multiple records to be inserted in a single operation.
+    def bulk_insert_window_outputs(self, records: list[tuple]) -> bool:
+        try:
+            with self._write_lock:
+                self.conn.executemany("""
+                    INSERT INTO window_outputs (output_id, run_id, vertex_id, window_start, window_end, output_count, attribution_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?);
+                """, records)
+            return True
+        except Exception as e:
+            raise RuntimeError(f"Error bulk inserting window outputs: {str(e)}") from e
 
     # Close the DuckDB connection and reset the singleton instance
     def close(self) -> None:

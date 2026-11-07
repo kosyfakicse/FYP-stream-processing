@@ -46,6 +46,7 @@ class StateModel(BaseModel):
 
 class WindowOutputModel(BaseModel):
     # Data model for the 'window_outputs' table
+    output_id: Optional[int] = None
     run_id: str
     vertex_id: str
     window_start: int
