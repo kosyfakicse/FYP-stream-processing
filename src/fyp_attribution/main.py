@@ -1,18 +1,18 @@
 from pyflink.common import Types, WatermarkStrategy, Time
 from pyflink.common.configuration import Configuration
-from pyflink.datastream import StreamExecutionEnvironment, OutputTag
+from pyflink.datastream import StreamExecutionEnvironment
 from pyflink.datastream.window import TumblingProcessingTimeWindows
-from pyflink.datastream.execution_mode import RuntimeExecutionMode 
 import re
 import sys
 import json
 
-from src.fyp_attribution.pipeline import DatasetLoader
 from src.fyp_attribution.core import load_config
 from src.fyp_attribution.pipeline import (
     TweetTimestampAssigner,
     HashtagAttributionProcessFunction,
-    get_kafka_source
+    get_kafka_source,
+    DatabaseBatchWriter,
+    PrintDB
 )
 
 def parse_json(raw):
@@ -46,6 +46,20 @@ def has_python(record) -> bool:
 
 def temp(record):
     return True
+
+# Global database writer instance (initialized in main)
+db_writer = None
+
+def write_to_db(record):
+    """Write window result to database using batch writer."""
+    global db_writer
+    if db_writer is None:
+        # Initialize on first call (happens in worker process)
+        db = PrintDB()
+        db_writer = DatabaseBatchWriter(db=db, collection_name="attribution_results", batch_size=1)
+    
+    db_writer.write(record)
+    return record
 
 # Debug logging functions
 def log_parsed(record):
@@ -84,7 +98,7 @@ def main():
         # Windows stability settings
         flink_config.set_string("taskmanager.numberOfTaskSlots", "1")
         flink_config.set_string("parallelism.default", "1")
-        
+
         env = StreamExecutionEnvironment.get_execution_environment(flink_config)
         env.set_parallelism(1)  # Force parallelism=1 for Windows stability
 
@@ -107,21 +121,29 @@ def main():
         # 4. Process stream with windowing
         print("\n[INFO] Starting stream processing...")
         print("[INFO] Using 5-second PROCESSING TIME windows for TESTING")
-        print("[INFO] Windows will trigger every 5 seconds based on system clock\n")
+        print("[INFO] Windows will trigger every 5 seconds based on system clock")
+        print("[INFO] Results will be written to database via batch writer\n")
         
         ds = data_stream \
             .map(parse_json, output_type=Types.TUPLE([Types.STRING(), Types.STRING(), Types.LONG()])) \
             .filter(lambda x: x is not None) \
             .map(extract_hashtags, output_type=Types.TUPLE([Types.STRING(), Types.STRING(), Types.LONG()])) \
-            .map(log_before_window, output_type=Types.TUPLE([Types.STRING(), Types.STRING(), Types.LONG()])) \
             .key_by(key, key_type=Types.STRING()) \
             .window(TumblingProcessingTimeWindows.of(Time.seconds(5))) \
             .process(HashtagAttributionProcessFunction(),
-                    Types.TUPLE([Types.STRING(), Types.STRING(), Types.LONG(), Types.LONG()]))
+                    Types.TUPLE([Types.STRING(), Types.STRING(), Types.LONG(), Types.LONG()])) \
+            .map(write_to_db, output_type=Types.TUPLE([Types.STRING(), Types.STRING(), Types.LONG(), Types.LONG()]))
 
         print("[INFO] Executing job... (will stream continuously)\n")
         ds.print()
-        env.execute("Kafka Hashtag Attribution")
+        
+        try:
+            env.execute("Kafka Hashtag Attribution with Database Writer")
+        finally:
+            # Cleanup: close database writer
+            if db_writer is not None:
+                print("\n[INFO] Closing database writer...")
+                db_writer.close()
 
     
     except Exception as e:
