@@ -26,6 +26,7 @@ class CountWindowProcessFunction(ProcessWindowFunction[tuple, tuple, str, TimeWi
 
 
 class HashtagAttributionProcessFunction(ProcessWindowFunction):
+    """Legacy window function - groups by user_id, outputs all hashtags per user."""
     def process(self, key, context, elements):
         user_id = key
         window_start = context.window().start
@@ -52,6 +53,41 @@ class HashtagAttributionProcessFunction(ProcessWindowFunction):
               f"hashtags={hashtag_json}")
         
         return [(user_id, hashtag_json, window_start, window_end)]
+
+
+class CategoryAttributionProcessFunction(ProcessWindowFunction):
+    """
+    Window function that outputs per-category (hashtag) attribution.
+    
+    Input: Records keyed by category (hashtag)
+           Each record: (category, user_id, timestamp)
+    
+    Output: (window_start, window_end, category, output_count, attribution_json)
+            Matches window_outputs table schema
+    
+    Example:
+        Input: 100 records with category="PYTHON" from user_1(30), user_2(40), user_3(30)
+        Output: (1735696800000, 1735696860000, "PYTHON", 100, '{"user_1": 30, "user_2": 40, "user_3": 30}')
+    """
+    def process(self, key, context, elements):
+        category = key  # The hashtag (e.g., "PYTHON", "DATA")
+        window_start = context.window().start
+        window_end = context.window().end
+        
+        user_attribution = Counter()
+        output_count = 0
+        
+        for record in elements:
+            cat, user_id, timestamp = record
+            user_attribution[user_id] += 1
+            output_count += 1
+        
+        # Convert attribution to JSON string
+        attribution_json = json.dumps(dict(user_attribution))
+        
+        
+        # Output format matches window_outputs table schema
+        return [(window_start, window_end, category, output_count, attribution_json)]
 
 class AttributionCount(AggregateFunction):
     """
