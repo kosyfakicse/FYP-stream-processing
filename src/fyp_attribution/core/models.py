@@ -49,6 +49,7 @@ class WindowOutputModel(BaseModel):
     output_id: Optional[int] = None
     run_id: str
     vertex_id: str
+    category: str
     window_start: int
     window_end: int
     output_count: int

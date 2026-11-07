@@ -105,6 +105,7 @@ class TINStore:
                     output_id BIGINT PRIMARY KEY,
                     run_id VARCHAR NOT NULL,
                     vertex_id VARCHAR NOT NULL,
+                    category VARCHAR NOT NULL,
                     window_start BIGINT NOT NULL,
                     window_end BIGINT NOT NULL,
                     output_count INTEGER NOT NULL,
@@ -173,9 +174,9 @@ class TINStore:
         try:
             with self._write_lock:
                 self.conn.execute("""
-                    INSERT INTO window_outputs (output_id, run_id, vertex_id, window_start, window_end, output_count, attribution_json)
-                    VALUES (?, ?, ?, ?, ?, ?, ?);
-                """, (output_id, output.run_id, output.vertex_id, output.window_start, output.window_end, output.output_count, attr_str))
+                    INSERT INTO window_outputs (output_id, run_id, vertex_id, category, window_start, window_end, output_count, attribution_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+                """, (output_id, output.run_id, output.vertex_id, output.category, output.window_start, output.window_end, output.output_count, attr_str))
             return output
         except Exception as e:
             raise RuntimeError(f"Error inserting window output {output_id}: {str(e)}") from e
@@ -185,8 +186,8 @@ class TINStore:
         try:
             with self._write_lock:
                 self.conn.executemany("""
-                    INSERT INTO window_outputs (output_id, run_id, vertex_id, window_start, window_end, output_count, attribution_json)
-                    VALUES (?, ?, ?, ?, ?, ?, ?);
+                    INSERT INTO window_outputs (output_id, run_id, vertex_id, category, window_start, window_end, output_count, attribution_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?);
                 """, records)
             return True
         except Exception as e:

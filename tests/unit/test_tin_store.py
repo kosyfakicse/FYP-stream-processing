@@ -86,7 +86,7 @@ def test_save_state(service, sample_attribution):
 def test_save_window_output(service, sample_attribution):
     """Test saving a WindowOutputModel and ensure ID is generated."""
     data = WindowOutputModel(
-        run_id="run-test-01", vertex_id="W1", window_start=1735696800000, 
+        run_id="run-test-01", vertex_id="W1", category="#python", window_start=1735696800000, 
         window_end=1735696860000, output_count=4, attribution_json=sample_attribution
     )
     result = service.save_window_output(data)
@@ -106,7 +106,7 @@ def test_bulk_save_window_outputs(service, sample_attribution):
     
     for i in range(total_records):
         models.append(WindowOutputModel(
-            run_id=f"run-bulk-{i}", vertex_id="W1", 
+            run_id=f"run-bulk-{i}", vertex_id="W1", category="#python",
             window_start=1735696800000 + i, window_end=1735696860000 + i,
             output_count=i, attribution_json=sample_attribution
         ))
@@ -165,7 +165,7 @@ def test_save_state_duplicate_raises_exception(service, sample_attribution):
 def test_save_window_output_duplicate_raises_exception(service, sample_attribution):
     """Test DAL exception for window output collision (since Service generates UUIDs)."""
     data = WindowOutputModel(
-        run_id="run", vertex_id="W1", window_start=1, window_end=2, 
+        run_id="run", vertex_id="W1", category="#python", window_start=1, window_end=2, 
         output_count=4, attribution_json=sample_attribution
     )
     store = service.store

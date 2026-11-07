@@ -52,7 +52,7 @@ class ProvenanceService:
             data.output_id = output_id
             attr_str = json.dumps(data.attribution_json)
             records_to_insert.append(
-                    (output_id, data.run_id, data.vertex_id, data.window_start, 
+                    (output_id, data.run_id, data.vertex_id, data.category, data.window_start, 
                     data.window_end, data.output_count, attr_str)
                 )
             
