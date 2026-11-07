@@ -162,6 +162,7 @@ FYP-stream-processing/
 |       |-- storage/                    # Data storage layer
 |       |   |-- README.md
 |       |   |-- __init__.py
+|       |   |-- duckdb_adapter.py       # Concrete DuckDB implementation of IDatabase
 |       |   |-- tin_store.py            # TIN persistence layer
 |       |   |-- provenance_service.py   # Service Layer
 |       |   +-- query_engine.py         # Backward attribution queries (BFS)

@@ -5,7 +5,7 @@ from src.fyp_attribution.core.models import (
 )
 from src.fyp_attribution.storage.tin_store import TINStore
 from src.fyp_attribution.storage.provenance_service import ProvenanceService
-
+from src.fyp_attribution.storage.duckdb_adapter import DuckDB
 """
 Unit tests for the Storage Layer (TINStore and ProvenanceService).
 
@@ -19,9 +19,10 @@ def service():
     Fixture to initialize the Service Layer.
     Uses an in-memory database (:memory:) to ensure complete isolation. 
     """
-    store = TINStore(db_path=":memory:")
-    yield ProvenanceService()
-    store.close()
+    db = DuckDB(db_path=":memory:")
+    service = ProvenanceService(db=db)
+    yield service
+    service.store.close()
 
 def test_save_run(service):
     """Test saving a RunModel."""
@@ -32,7 +33,7 @@ def test_save_run(service):
     result = service.save_run(data)
     assert isinstance(result, RunModel)
     
-    df = service.store.conn.execute("SELECT * FROM runs").fetchdf()
+    df = service.store.db.conn.execute("SELECT * FROM runs").fetchdf()
     assert len(df) == 1
     assert df.iloc[0]['dataset'] == "tweet_hashtag"
 
@@ -42,7 +43,7 @@ def test_save_vertex(service):
     result = service.save_vertex(data)
     assert isinstance(result, VertexModel)
     
-    df = service.store.conn.execute("SELECT * FROM tin_vertices").fetchdf()
+    df = service.store.db.conn.execute("SELECT * FROM tin_vertices").fetchdf()
     assert len(df) == 1
     assert df.iloc[0]['vertex_type'] == "source"
 
@@ -52,7 +53,7 @@ def test_save_edge(service):
     result = service.save_edge(data)
     assert isinstance(result, EdgeModel)
     
-    df = service.store.conn.execute("SELECT * FROM tin_edges").fetchdf()
+    df = service.store.db.conn.execute("SELECT * FROM tin_edges").fetchdf()
     assert len(df) == 1
     assert df.iloc[0]['source_vertex'] == "V1"
 
@@ -66,7 +67,7 @@ def test_save_interaction(service, sample_attribution):
     result = service.save_interaction(data)
     assert isinstance(result, InteractionModel)
     
-    df = service.store.conn.execute("SELECT * FROM tin_interactions").fetchdf()
+    df = service.store.db.conn.execute("SELECT * FROM tin_interactions").fetchdf()
     assert len(df) == 1
     assert '{"user_1": 2' in df.iloc[0]['attribution_json']
 
@@ -79,7 +80,7 @@ def test_save_state(service, sample_attribution):
     result = service.save_state(data)
     assert isinstance(result, StateModel)
     
-    df = service.store.conn.execute("SELECT * FROM tin_states").fetchdf()
+    df = service.store.db.conn.execute("SELECT * FROM tin_states").fetchdf()
     assert len(df) == 1
     assert df.iloc[0]['quantity'] == 4
 
@@ -95,7 +96,7 @@ def test_save_window_output(service, sample_attribution):
     assert isinstance(result, WindowOutputModel)
     assert result.output_id is not None 
     
-    df = service.store.conn.execute("SELECT * FROM window_outputs").fetchdf()
+    df = service.store.db.conn.execute("SELECT * FROM window_outputs").fetchdf()
     assert len(df) == 1
     assert df.iloc[0]['output_count'] == 4
 
@@ -119,7 +120,7 @@ def test_bulk_save_window_outputs(service, sample_attribution):
     assert all(isinstance(m.output_id, int) for m in results)
     
     # Verify DB count
-    df = service.store.conn.execute("SELECT * FROM window_outputs").fetchdf()
+    df = service.store.db.conn.execute("SELECT * FROM window_outputs").fetchdf()
     assert len(df) == total_records
 
 # --- Exception Handling Tests ---
@@ -129,38 +130,43 @@ def test_save_run_duplicate_raises_exception(service):
     data = RunModel(run_id="dup-id", started_at="2026-11-07 10:00:00", dataset="test", provenance_enabled=True)
     service.save_run(data)
     
-    # Second insert should raise RuntimeError
     with pytest.raises(RuntimeError) as exc_info:
         service.save_run(data)
-    assert "Error inserting run dup-id" in str(exc_info.value)
+    # 改成检查 Database error
+    assert "Database error" in str(exc_info.value)
+    assert "Duplicate key" in str(exc_info.value)
 
 def test_save_vertex_duplicate_raises_exception(service):
     data = VertexModel(vertex_id="V1", run_id="run", vertex_type="source")
     service.save_vertex(data)
     with pytest.raises(RuntimeError) as exc_info:
         service.save_vertex(data)
-    assert "Error inserting vertex V1" in str(exc_info.value)
+    assert "Database error" in str(exc_info.value)
+    assert "Duplicate key" in str(exc_info.value)
 
 def test_save_edge_duplicate_raises_exception(service):
     data = EdgeModel(source_vertex="V1", target_vertex="V2", run_id="run")
     service.save_edge(data)
     with pytest.raises(RuntimeError) as exc_info:
         service.save_edge(data)
-    assert "Error inserting edge V1->V2" in str(exc_info.value)
+    assert "Database error" in str(exc_info.value)
+    assert "Duplicate key" in str(exc_info.value)
 
 def test_save_interaction_duplicate_raises_exception(service, sample_attribution):
     data = InteractionModel(interaction_id=1, run_id="run", source_vertex="V1", target_vertex="V2", timestamp=1, quantity=1, attribution_json=sample_attribution)
     service.save_interaction(data)
     with pytest.raises(RuntimeError) as exc_info:
         service.save_interaction(data)
-    assert "Error inserting interaction 1" in str(exc_info.value)
+    assert "Database error" in str(exc_info.value)
+    assert "Duplicate key" in str(exc_info.value)
 
 def test_save_state_duplicate_raises_exception(service, sample_attribution):
     data = StateModel(state_id=1, run_id="run", vertex_id="V1", time_start=1, quantity=1, attribution_json=sample_attribution)
     service.save_state(data)
     with pytest.raises(RuntimeError) as exc_info:
         service.save_state(data)
-    assert "Error inserting state 1" in str(exc_info.value)
+    assert "Database error" in str(exc_info.value)
+    assert "Duplicate key" in str(exc_info.value)
 
 def test_save_window_output_duplicate_raises_exception(service, sample_attribution):
     """Test DAL exception for window output collision (since Service generates UUIDs)."""
@@ -170,22 +176,22 @@ def test_save_window_output_duplicate_raises_exception(service, sample_attributi
     )
     store = service.store
     
-    # Insert directly via DAL with fixed ID
     store.insert_window_output(999, data, '{"user_1": 1}')
     
-    # Second insert should raise exception
     with pytest.raises(RuntimeError) as exc_info:
         store.insert_window_output(999, data, '{"user_1": 1}')
-    assert "Error inserting window output 999" in str(exc_info.value)
+    assert "Database error" in str(exc_info.value)
+    assert "Duplicate key" in str(exc_info.value)
 
 def test_close_connection():
     """Test that the connection closes properly and can be reopened."""
-    store = TINStore(db_path=":memory:")
-    assert store.conn is not None
+    db = DuckDB(db_path=":memory:")
+    store = TINStore(db=db)
+    assert db.conn is not None
     
     # Close the connection
     store.close()
-    assert store.conn is None
+    assert db.conn is None
     
     # Call close again to hit the edge case (should not crash)
     store.close()

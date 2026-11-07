@@ -1,10 +1,12 @@
 import json
 import uuid
 from loguru import logger
+from src.fyp_attribution.pipeline.db_writer import IDatabase
 from src.fyp_attribution.core.models import (
     RunModel, VertexModel, EdgeModel, 
     InteractionModel, StateModel, WindowOutputModel
 )
+from src.fyp_attribution.storage.duckdb_adapter import DuckDB
 from src.fyp_attribution.storage.tin_store import TINStore
 
 class ProvenanceService:
@@ -15,8 +17,10 @@ class ProvenanceService:
     # It provides methods to save runs, vertices, edges, interactions, states, and window outputs. 
     # Each method takes a corresponding data model as input and delegates the insertion operation to the TINStore instance. 
     # The service also handles the conversion of attribution JSON data to string format before passing it to the store's insert methods.
-    def __init__(self):
-        self.store = TINStore()
+    def __init__(self, db: IDatabase = None):
+        if db is None:
+            db = DuckDB(db_path="data/attribution.duckdb")
+        self.store = TINStore(db=db)
 
     def save_run(self, data: RunModel) -> RunModel:
         return self.store.insert_run(data)

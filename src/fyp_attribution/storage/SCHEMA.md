@@ -1,3 +1,16 @@
+# ProvenanceService API Reference 
+## Connection Management
+
+## When you instantiate the `ProvenanceService`, it automatically creates a connection to the default DuckDB file (`data/attribution.duckdb`) and injects it into the Data Access Layer.
+```python
+from src.fyp_attribution.storage.provenance_service import ProvenanceService
+service = ProvenanceService()
+```
+## How to Close
+```python
+service.store.close()
+```
+
 1. Single Insertion: Run
 **Function**: `save_run(data: RunModel) -> RunModel`
 
@@ -108,6 +121,7 @@ service = ProvenanceService()
 data = WindowOutputModel(
     run_id="run-001",
     vertex_id="W1",
+    category="#python",
     window_start=1735696800000,
     window_end=1735696860000,
     output_count=4,
@@ -127,8 +141,8 @@ Function: bulk_save_window_outputs(models: list[WindowOutputModel]) -> list[Wind
 service = ProvenanceService()
 
 data_list = [
-    WindowOutputModel(run_id="run-001", vertex_id="W1", window_start=1000, window_end=2000, output_count=10, attribution_json={"user_1": 10}),
-    WindowOutputModel(run_id="run-001", vertex_id="W1", window_start=1000, window_end=2000, output_count=5, attribution_json={"user_2": 5})
+    WindowOutputModel(run_id="run-001", vertex_id="W1", category="#python", window_start=1000, window_end=2000, output_count=10, attribution_json={"user_1": 10}),
+    WindowOutputModel(run_id="run-001", vertex_id="W1", category="#python", window_start=1000, window_end=2000, output_count=5, attribution_json={"user_2": 5})
 ]
 ```
 # Call the function
