@@ -6,6 +6,7 @@ import re
 import sys
 import json
 
+from src.fyp_attribution.storage.duckdb_adapter import DuckDB
 from src.fyp_attribution.core import load_config
 from src.fyp_attribution.pipeline import (
     TweetTimestampAssigner,
@@ -55,7 +56,7 @@ def write_to_db(record):
     global db_writer
     if db_writer is None:
         # Initialize on first call (happens in worker process)
-        db = PrintDB()
+        db = DuckDB()
         db_writer = DatabaseBatchWriter(db=db, collection_name="attribution_results", batch_size=1)
     
     db_writer.write(record)
