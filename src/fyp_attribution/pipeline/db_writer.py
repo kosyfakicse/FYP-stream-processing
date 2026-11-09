@@ -2,8 +2,7 @@
 
 
 
-
-
+from src.fyp_attribution.storage.duckdb_adapter import DuckDB
 
 
 
@@ -20,11 +19,7 @@ class PrintDB(IDatabase):
 
     def bulk_write(self, records, collection_name):
         print(f"Total {len(records)} records insert into {collection_name} ")
-
-class DuckDB(IDatabase):
-    def __init__(self):
-        ...
-
+        
         
 class DatabaseBatchWriter:
     def __init__(self, db: IDatabase, collection_name: str, batch_size: int = 100):
@@ -51,7 +46,8 @@ class DatabaseBatchWriter:
         self.batch = []
 
 def main():
-    db = PrintDB()
+    
+    db = DuckDB()
     writer = DatabaseBatchWriter(db=db, collection_name="tweets", batch_size=5)
 
     # Test data: window results format (user_id, hashtag_json, window_start, window_end)

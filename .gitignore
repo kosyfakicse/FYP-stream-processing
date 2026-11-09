@@ -71,3 +71,6 @@ Thumbs.db
 *.bak
 *.swp
 *~
+
+# Local test scripts
+send_data.py
