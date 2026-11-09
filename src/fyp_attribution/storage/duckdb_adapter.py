@@ -1,8 +1,13 @@
+import os
 import duckdb
 import threading
 import json
 from loguru import logger
 from typing import Any, Protocol
+from dotenv import load_dotenv
+
+load_dotenv()
+DB_PATH = os.getenv("DUCKDB_PATH", "data/attribution.duckdb")
 
 class IDatabase(Protocol):
     def write(self, record, collection_name: str) -> None: 
@@ -34,16 +39,16 @@ class DuckDB(IDatabase):
                 cls._instance._initialized = False
             return cls._instance
         
-    def __init__(self, db_path: str = "data/attribution.duckdb"):
+    def __init__(self, db_path: str = DB_PATH, read_only: bool = False):
         if getattr(self, "_initialized", False):
             return
 
-        self.conn = duckdb.connect(db_path)
+        self.conn = duckdb.connect(db_path, read_only=read_only) 
         self.db_path = db_path
         self.write_lock = threading.Lock()
         self._service = None
         self._initialized = True
-        logger.info("DuckDB Connection Initialized (Singleton).")
+        logger.info(f"DuckDB Connection Initialized (Read-Only: {read_only}).")
 
     # Execute a query and return the result
     def execute(self, query: str, params: tuple = None) -> Any:
@@ -85,18 +90,17 @@ class DuckDB(IDatabase):
 
         # Each record is expected to be a tuple in the format
         for record in records:
-            user_id, hashtag_json_str, window_start, window_end = record
-            hashtags_dict = json.loads(hashtag_json_str)
-            total = sum(hashtags_dict.values())
+            window_start, window_end, category, output_count, attribution_json_str = record
+            attribution_dict = json.loads(attribution_json_str)
 
             models.append(WindowOutputModel(
                 run_id="flink-run-001",
                 vertex_id="W1",
-                category=", ".join(hashtags_dict.keys()),
+                category=category,
                 window_start=window_start,
                 window_end=window_end,
-                output_count=total,
-                attribution_json={user_id: total}
+                output_count=output_count,
+                attribution_json=attribution_dict
             ))
 
         # Bulk save the models using ProvenanceService

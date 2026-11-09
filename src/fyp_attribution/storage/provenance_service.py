@@ -1,4 +1,5 @@
 import json
+import os
 import uuid
 from loguru import logger
 from src.fyp_attribution.pipeline.db_writer import IDatabase
@@ -6,8 +7,12 @@ from src.fyp_attribution.core.models import (
     RunModel, VertexModel, EdgeModel, 
     InteractionModel, StateModel, WindowOutputModel
 )
+from dotenv import load_dotenv
 from src.fyp_attribution.storage.duckdb_adapter import DuckDB
 from src.fyp_attribution.storage.tin_store import TINStore
+
+load_dotenv()
+DB_PATH = os.getenv("DUCKDB_PATH", "data/attribution.duckdb")
 
 class ProvenanceService:
     """
@@ -19,7 +24,7 @@ class ProvenanceService:
     # The service also handles the conversion of attribution JSON data to string format before passing it to the store's insert methods.
     def __init__(self, db: IDatabase = None):
         if db is None:
-            db = DuckDB(db_path="data/attribution.duckdb")
+            db = DuckDB(db_path=DB_PATH)
         self.store = TINStore(db=db)
 
     def save_run(self, data: RunModel) -> RunModel:

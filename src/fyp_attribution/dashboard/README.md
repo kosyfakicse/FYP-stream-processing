@@ -34,7 +34,7 @@ These components will be implemented in Weeks 7-8:
 
 ```bash
 # Run the dashboard
-streamlit run src/fyp_attribution/dashboard/app.py
+python -m streamlit run src/fyp_attribution/dashboard/app.py
 
 # Or use make
 make run-dashboard
