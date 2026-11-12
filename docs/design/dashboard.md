@@ -76,8 +76,36 @@ Input:
 
 Result:
     1. Grouped Bar Chart
-
     2. Different Table
 
-Page 3: TIN Network Topology (Not necessary)
+
+Page 3: Insert Data
+
+Top section: Dataset Preparation
+    Tab 1: Upload File
+        Schema Validation: Follow the ['user_id', 'text', 'timestamp'] and not empty space
+
+    Tab 2: System Generate with Parameters
+        Parameter Controls: Number of Rows, Number of  Users, Target Hashtags, Time Interval
+
+    Tab 3: Full Custom Editor
+        Interactive Data Editor: Allow user to add row and delete row and change some data
+
+Middle Section: Dataset Preview & Validation
+    Summary Metrics: 
+        Total Records
+        Unique Users
+        Time Span
+        Data Preview Table
+
+Bottom Section: Pipeline Execution & Run ID Tracking
+    Action Bar: Run Mode Toggle(Mock/Live Backend), Send button
+    Execution Result: 
+        Success Banner and show the Run ID
+        Pipeline Status Indicator(Submitted / Processing / Completed)
+        Quick Action Button
+
+
+Page 4: TIN Network Topology (Not necessary)
+
 
