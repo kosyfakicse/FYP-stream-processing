@@ -2,6 +2,10 @@ import pandas as pd
 import streamlit as st
 from src.fyp_attribution.storage.duckdb_adapter import DuckDB
 from src.fyp_attribution.dashboard.components.page_setup import DB_PATH
+from src.fyp_attribution.dashboard.components.mock_store import (
+    load_mock_run,
+    list_mock_run_ids,
+)
 
 
 @st.cache_resource
@@ -10,14 +14,20 @@ def get_db():
 
 
 def load_run_data(selected_run_id: str, mock_store: dict):
-    """Load window_outputs and flow_lineage from either Mock Session State or DuckDB."""
+    """Load window_outputs and flow_lineage from Mock DB, Session, or DuckDB."""
+    # 1. Try file-based mock database first
+    window_df, flow_df = load_mock_run(selected_run_id)
+    if not window_df.empty:
+        return window_df, flow_df, "Mock Database"
+
+    # 2. Fall back to old session state mock (optional)
     if selected_run_id in mock_store:
         data = mock_store[selected_run_id]
         window_df = data.get("window_outputs", pd.DataFrame()).copy()
         flow_df = data.get("flow_lineage", pd.DataFrame()).copy()
         return window_df, flow_df, "Mock Session"
 
-    # Load from DuckDB
+    # 3. Load from real DuckDB
     window_df = pd.DataFrame()
     flow_df = pd.DataFrame()
     try:
@@ -49,8 +59,15 @@ def load_run_data(selected_run_id: str, mock_store: dict):
 
 
 def get_available_run_ids(mock_store: dict) -> list:
-    """Gather available Run IDs from both Mock Session State and DuckDB."""
-    run_ids = list(mock_store.keys())
+    """Gather available Run IDs from Mock DB, Session State, and DuckDB."""
+    run_ids = list_mock_run_ids()
+
+    # Add old session state runs (optional)
+    for r in mock_store.keys():
+        if r not in run_ids:
+            run_ids.append(r)
+
+    # Add real DuckDB runs
     try:
         db = get_db()
         cols_df = db.execute("DESCRIBE window_outputs").fetchdf()
@@ -69,4 +86,5 @@ def get_available_run_ids(mock_store: dict) -> list:
 
     if not run_ids:
         run_ids.append("All Runs (DuckDB)")
+
     return run_ids

@@ -4,6 +4,14 @@ from src.fyp_attribution.dashboard.components.db_utils import get_db
 from src.fyp_attribution.dashboard.components.charts import (
     create_trending_hashtags_chart,
 )
+from pathlib import Path
+
+# Only clear mock store once when the server starts
+if "mock_cleared" not in st.session_state:
+    mock_file = Path("data/mock_results.pkl")
+    if mock_file.exists():
+        mock_file.unlink()
+    st.session_state.mock_cleared = True
 
 init_page("System Overview")
 

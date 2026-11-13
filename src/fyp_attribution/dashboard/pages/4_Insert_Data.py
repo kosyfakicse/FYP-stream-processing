@@ -13,10 +13,17 @@ from src.fyp_attribution.dashboard.components.data_utils import (
     validate_schema,
     generate_mock_tweets,
 )
+from src.fyp_attribution.dashboard.components.mock_store import (
+    save_mock_run,
+    list_mock_run_ids,
+    delete_mock_run,
+    init_mock_db,
+)
 
 init_page("Insert Data")
+init_mock_db()
 
-# Initialize session state to persist dataset and run_id across pages
+# Initialize session state
 if "prepared_df" not in st.session_state:
     base_ts = int(time.time() * 1000)
     st.session_state.prepared_df = pd.DataFrame({
@@ -30,7 +37,6 @@ if "latest_run_id" not in st.session_state:
 
 if "pipeline_status" not in st.session_state:
     st.session_state.pipeline_status = None
-
 
 # ==========================================
 # Page Header
@@ -201,9 +207,6 @@ if send_clicked:
                 st.session_state.latest_run_id = mock_run_id
                 st.session_state.pipeline_status = "Completed"
 
-                if "mock_results" not in st.session_state:
-                    st.session_state.mock_results = {}
-
                 # Extract hashtags and calculate multi-window mock attribution results
                 exploded = df_current.assign(
                     hashtag=df_current["text"].str.findall(r"#\w+")
@@ -212,7 +215,6 @@ if send_clicked:
 
                 mock_window_rows = []
                 mock_flow_rows = []
-                mock_source_events = {}
 
                 mid_ts = (
                     int(df_current["timestamp"].median())
@@ -251,10 +253,6 @@ if send_clicked:
                             "window_start": win_start,
                         })
 
-                        mock_source_events[out_id] = sub_group[
-                            ["user_id", "text", "timestamp"]
-                        ].copy()
-
                         for u, cnt in sub_group["user_id"].value_counts().items():
                             mock_flow_rows.append({
                                 "run_id": mock_run_id,
@@ -263,11 +261,12 @@ if send_clicked:
                                 "total_quantity": int(cnt),
                             })
 
-                st.session_state.mock_results[mock_run_id] = {
-                    "window_outputs": pd.DataFrame(mock_window_rows),
-                    "flow_lineage": pd.DataFrame(mock_flow_rows),
-                    "source_events": mock_source_events,
-                }
+                # Save to mock database
+                save_mock_run(
+                    mock_run_id,
+                    pd.DataFrame(mock_window_rows),
+                    pd.DataFrame(mock_flow_rows),
+                )
 
                 status.update(
                     label="Status: Completed", state="complete", expanded=False
@@ -306,3 +305,34 @@ if st.session_state.latest_run_id:
     with res_col2:
         if st.button("Go to Query Page", use_container_width=True):
             st.switch_page("pages/2_Query.py")
+
+# ==========================================
+# Manage Mock Runs
+# ==========================================
+st.markdown("---")
+st.subheader("Manage Mock Runs")
+
+mock_runs = list_mock_run_ids()
+if not mock_runs:
+    st.info("No mock runs stored yet.")
+else:
+    selected_to_delete = st.selectbox(
+        "Select a mock run to delete", options=mock_runs
+    )
+
+    if st.button("Delete Selected Run", type="secondary"):
+        st.session_state["confirm_delete"] = selected_to_delete
+
+    if st.session_state.get("confirm_delete") == selected_to_delete:
+        st.warning(f"Are you sure you want to delete **{selected_to_delete}**?")
+        col_yes, col_no = st.columns(2)
+        with col_yes:
+            if st.button("Yes, Delete", type="primary"):
+                delete_mock_run(selected_to_delete)
+                st.success(f"Deleted {selected_to_delete}")
+                st.session_state.pop("confirm_delete", None)
+                st.rerun()
+        with col_no:
+            if st.button("Cancel"):
+                st.session_state.pop("confirm_delete", None)
+                st.rerun()

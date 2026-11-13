@@ -4,7 +4,7 @@ import streamlit as st
 from src.fyp_attribution.dashboard.components.charts import (
     create_attribution_donut_chart,
     create_backward_bar_chart,
-    create_flow_sankey_diagram,
+    create_flow_network_chart,
     create_temporal_trend_chart,
     create_version_comparison_chart,
 )
@@ -359,11 +359,11 @@ with tab4:
         f_left, f_right = st.columns([1.3, 1])
         with f_left:
             if not filtered_flow.empty:
-                fig_sankey = create_flow_sankey_diagram(
+                fig_network = create_flow_network_chart(
                     flow_df=filtered_flow,
                     run_id=selected_run_id,
                 )
-                st.plotly_chart(fig_sankey, use_container_width=True)
+                st.plotly_chart(fig_network, use_container_width=True)
             else:
                 st.info("No flow edges match the current filter threshold.")
 

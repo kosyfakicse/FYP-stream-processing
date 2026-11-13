@@ -132,55 +132,124 @@ def create_temporal_trend_chart(
 
 
 # ------------------------------------------------------------------
-# Flow Lineage (Sankey)
+# Flow Lineage
 # ------------------------------------------------------------------
-def create_flow_sankey_diagram(
+def create_flow_network_chart(
     flow_df: pd.DataFrame, run_id: str = ""
 ) -> go.Figure:
     """
-    Sankey diagram of provenance flow.
-    Expects columns: source_vertex, target_vertex, total_quantity
+    Dot-to-dot (node-link) chart for flow lineage.
+    Hover on a node shows summary data.
     """
     df = flow_df.copy()
 
-    # Build node list
-    sources = df["source_vertex"].astype(str).tolist()
-    targets = df["target_vertex"].astype(str).tolist()
-    all_nodes = list(dict.fromkeys(sources + targets))  # preserve order, unique
-    node_index = {name: i for i, name in enumerate(all_nodes)}
+    # Aggregate duplicates
+    df = (
+        df.groupby(["source_vertex", "target_vertex"], as_index=False)["total_quantity"]
+        .sum()
+    )
 
-    link_source = [node_index[s] for s in sources]
-    link_target = [node_index[t] for t in targets]
-    link_value = df["total_quantity"].astype(float).tolist()
+    if df.empty:
+        fig = go.Figure()
+        fig.update_layout(title="No flow data", height=300)
+        return fig
+
+    sources = df["source_vertex"].unique().tolist()
+    targets = df["target_vertex"].unique().tolist()
+
+    # Pre-calculate totals for hover
+    source_totals = df.groupby("source_vertex")["total_quantity"].sum().to_dict()
+    target_totals = df.groupby("target_vertex")["total_quantity"].sum().to_dict()
+
+    # Position nodes
+    node_x, node_y, node_text, node_color, node_hover = [], [], [], [], []
+
+    # Users on the left
+    for i, user in enumerate(sources):
+        total = source_totals.get(user, 0)
+        node_x.append(0)
+        node_y.append(i)
+        node_text.append(user)
+        node_color.append("#8b5cf6")
+        node_hover.append(
+            f"<b>{user}</b><br>"
+            f"Total contribution: {total:.0f}<br>"
+            f"Type: Source User"
+        )
+
+    # Hashtags on the right
+    y_scale = len(sources) / max(len(targets), 1)
+    for i, tag in enumerate(targets):
+        total = target_totals.get(tag, 0)
+        node_x.append(1)
+        node_y.append(i * y_scale)
+        node_text.append(tag)
+        node_color.append("#3b82f6")
+        node_hover.append(
+            f"<b>{tag}</b><br>"
+            f"Total received: {total:.0f}<br>"
+            f"Type: Hashtag"
+        )
+
+    # Edges
+    edge_x, edge_y = [], []
+    for _, row in df.iterrows():
+        src = row["source_vertex"]
+        tgt = row["target_vertex"]
+        x0, y0 = 0, sources.index(src)
+        x1 = 1
+        y1 = targets.index(tgt) * y_scale
+        edge_x.extend([x0, x1, None])
+        edge_y.extend([y0, y1, None])
+
+    fig = go.Figure()
+
+    # Lines
+    fig.add_trace(
+        go.Scatter(
+            x=edge_x,
+            y=edge_y,
+            mode="lines",
+            line=dict(width=1.8, color="rgba(148, 163, 184, 0.55)"),
+            hoverinfo="none",
+            showlegend=False,
+        )
+    )
+
+    # Nodes (with hover)
+    fig.add_trace(
+        go.Scatter(
+            x=node_x,
+            y=node_y,
+            mode="markers+text",
+            text=node_text,
+            textposition=["middle right"] * len(sources) + ["middle left"] * len(targets),
+            textfont=dict(size=12, color="#e2e8f0"),
+            marker=dict(
+                size=20,
+                color=node_color,
+                line=dict(width=2, color="white"),
+            ),
+            hovertext=node_hover,
+            hoverinfo="text",
+            showlegend=False,
+        )
+    )
 
     title = "Flow Lineage"
     if run_id:
         title = f"Flow Lineage · {run_id}"
 
-    fig = go.Figure(
-        data=[
-            go.Sankey(
-                node=dict(
-                    pad=18,
-                    thickness=18,
-                    line=dict(color="rgba(0,0,0,0.3)", width=0.5),
-                    label=all_nodes,
-                    color="rgba(99, 110, 250, 0.75)",
-                ),
-                link=dict(
-                    source=link_source,
-                    target=link_target,
-                    value=link_value,
-                    color="rgba(99, 110, 250, 0.25)",
-                ),
-            )
-        ]
-    )
     fig.update_layout(
         title=title,
-        margin=dict(l=20, r=20, t=50, b=20),
+        showlegend=False,
+        hovermode="closest",
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-0.2, 1.3]),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        margin=dict(l=10, r=10, t=50, b=10),
         height=420,
-        font=dict(size=12),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
     )
     return fig
 
