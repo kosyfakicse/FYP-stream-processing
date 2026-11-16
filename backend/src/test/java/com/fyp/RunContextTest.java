@@ -43,4 +43,16 @@ class RunContextTest {
         assertThat(run.dataset()).isEqualTo("tweet_hashtag");
         assertThat(run.configJson()).contains("\"target_dataset\":\"tweet_hashtag\"");
     }
+
+    /**
+     * A run over HTTP names the upload it read, and that id is what {@code runs.dataset} holds. The
+     * config snapshot still carries {@code target_dataset}: it records the settings, not the input.
+     */
+    @Test
+    void recordsTheDatasetItWasHandedInsteadOfTheConfiguredName() {
+        RunContext run = RunContext.start(ConfigLoader.load(), "ds-20261116-0931-4e11");
+
+        assertThat(run.dataset()).isEqualTo("ds-20261116-0931-4e11");
+        assertThat(run.configJson()).contains("\"target_dataset\":\"tweet_hashtag\"");
+    }
 }

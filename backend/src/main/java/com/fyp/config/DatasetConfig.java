@@ -3,18 +3,20 @@ package com.fyp.config;
 import java.util.Locale;
 
 /**
- * The dataset block: one target name plus one entry per supported dataset.
+ * The dataset block: one target name, one entry per supported dataset, and where uploads live.
  *
  * <p>Python resolved the target with {@code getattr(self, target_dataset)}; a record has no such
  * escape hatch, so the mapping is written out.
  *
  * @param targetDataset which of the entries below to use
+ * @param uploadsDir directory the api writes uploaded csvs into
+ * @param uploadTtlDays how long an upload survives, zero meaning forever
  * @param tweetHashtag generated tweets dataset
  * @param nycTaxi reserved, no file configured yet
  * @param nexmark reserved, no file configured yet
  */
-public record DatasetConfig(String targetDataset, DatasetEntry tweetHashtag, DatasetEntry nycTaxi,
-        DatasetEntry nexmark) {
+public record DatasetConfig(String targetDataset, String uploadsDir, int uploadTtlDays,
+        DatasetEntry tweetHashtag, DatasetEntry nycTaxi, DatasetEntry nexmark) {
 
     public DatasetEntry resolveTarget() {
         String key = targetDataset == null ? "" : targetDataset.replace('-', '_').toLowerCase(Locale.ROOT);

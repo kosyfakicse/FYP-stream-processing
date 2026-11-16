@@ -13,7 +13,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import com.fyp.AttributionService;
 import com.fyp.RunContext;
 import com.fyp.config.AppConfig;
 import com.fyp.config.DatasetConfig;
@@ -22,6 +21,7 @@ import com.fyp.config.FlinkConfig;
 import com.fyp.config.PipelineConfig;
 import com.fyp.model.Attribution;
 import com.fyp.model.WindowOutput;
+import com.fyp.service.AttributionService;
 import com.fyp.storage.DuckDbExecutor;
 import com.fyp.storage.RunRepository;
 import com.fyp.storage.RunResults;
@@ -55,8 +55,8 @@ class AttributionPipelineEndToEndTest {
         jdbcUrl = DuckDbExecutor.urlFor(dbFile);
 
         config = new AppConfig(
-                new DatasetConfig("tweet_hashtag", new DatasetEntry("test data", datasetCsv.toString()),
-                        null, null),
+                new DatasetConfig("tweet_hashtag", tempDir.resolve("uploads").toString(), 0,
+                        new DatasetEntry("test data", datasetCsv.toString()), null, null),
                 new FlinkConfig(1),
                 new PipelineConfig(1, 100, dbFile.toString()));
 

@@ -54,6 +54,10 @@ public final class RecordingExecutor implements SqlExecutor {
         return updates.get(updates.size() - 1);
     }
 
+    public Call lastQuery() {
+        return queries.get(queries.size() - 1);
+    }
+
     public Call lastBatch() {
         return batches.get(batches.size() - 1);
     }

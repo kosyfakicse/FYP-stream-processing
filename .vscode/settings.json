@@ -8,7 +8,7 @@
     "//why-verbose": "Temporary. Shows whether a project was discovered in Output > Oracle Java Tools. Set false once the Java Projects view lists fyp-attribution-backend.",
     "jdk.verbose": true,
 
-    "//why-semantic": "Type references (Logger, ToolchainSmokeCheck.class) are coloured only by the language server, never by the TextMate grammar.",
+    "//why-semantic": "Type references (Logger, AttributionService.class) are coloured only by the language server, never by the TextMate grammar.",
     "editor.semanticHighlighting.enabled": true,
 
     "//why-color-customization": "Oracle's java.tmLanguage.json defines exactly four type scopes -- class, enum, record, module -- and has no interface scope, so `interface Foo` can only ever be coloured by semantic tokens. These keys make type colour uniform regardless of theme.",

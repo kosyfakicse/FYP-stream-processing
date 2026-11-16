@@ -6,6 +6,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Creates the tables from {@code schema.sql} on the classpath.
@@ -26,9 +27,17 @@ public final class SchemaInitializer {
         }
     }
 
-    /** Splits the script so one bad table is reported as itself rather than as a giant statement. */
+    /**
+     * Splits the script so one bad table is reported as itself rather than as a giant statement.
+     *
+     * <p>Comment lines are dropped first, because a semicolon in prose would otherwise cut a
+     * {@code CREATE TABLE} in half.
+     */
     static List<String> statements(String script) {
-        return Arrays.stream(script.split(";"))
+        String withoutComments = script.lines()
+                .filter(line -> !line.trim().startsWith("--"))
+                .collect(Collectors.joining("\n"));
+        return Arrays.stream(withoutComments.split(";"))
                 .map(String::trim)
                 .filter(statement -> !statement.isEmpty())
                 .toList();

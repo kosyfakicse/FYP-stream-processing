@@ -33,7 +33,7 @@ public final class CsvDatasetLoader {
         try (BufferedReader reader = Files.newBufferedReader(csvPath, StandardCharsets.UTF_8)) {
             String header = reader.readLine();
             if (header == null) {
-                throw new IllegalStateException("Dataset is empty: " + csvPath);
+                throw new DatasetFormatException("Dataset is empty: " + csvPath);
             }
             requireHeader(header);
 
@@ -56,21 +56,23 @@ public final class CsvDatasetLoader {
     private static Tweet parseLine(String line, int lineNumber) {
         String[] fields = line.split(",", 3);
         if (fields.length < 3) {
-            throw new IllegalStateException(
+            throw new DatasetFormatException(
                     "Expected user_id,text,timestamp at line " + lineNumber + " but got: " + line);
         }
         try {
             return new Tweet(fields[0], fields[1], Long.parseLong(fields[2].trim()));
         } catch (NumberFormatException e) {
-            throw new IllegalStateException("Timestamp is not a long at line " + lineNumber + ": " + line, e);
+            throw new DatasetFormatException(
+                    "Timestamp is not a long at line " + lineNumber + ": " + line, e);
         }
     }
 
-    private static void requireHeader(String header) {
+    /** Shared with {@link DatasetScan}, so an upload is accepted under exactly the rule the run enforces. */
+    static void requireHeader(String header) {
         String[] fields = header.split(",");
         if (fields.length < 3 || !fields[0].equals("user_id") || !fields[1].equals("text")
                 || !fields[2].equals("timestamp")) {
-            throw new IllegalStateException(
+            throw new DatasetFormatException(
                     "Expected header user_id,text,timestamp but found: " + header);
         }
     }

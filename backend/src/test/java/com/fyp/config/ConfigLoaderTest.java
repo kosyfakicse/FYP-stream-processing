@@ -12,6 +12,8 @@ class ConfigLoaderTest {
         AppConfig config = ConfigLoader.load("config-test.yaml");
 
         assertThat(config.dataset().targetDataset()).isEqualTo("nexmark");
+        assertThat(config.dataset().uploadsDir()).isEqualTo("data/uploads");
+        assertThat(config.dataset().uploadTtlDays()).isEqualTo(14);
         assertThat(config.flink().parallelism()).isEqualTo(3);
         assertThat(config.pipeline().windowSizeSeconds()).isEqualTo(15);
         assertThat(config.pipeline().batchSize()).isEqualTo(7);
@@ -33,9 +35,22 @@ class ConfigLoaderTest {
         assertThat(entry.description()).isNotBlank();
     }
 
+    /**
+     * The keys {@code ApiApplication} needs at startup, checked against the shipped file rather than
+     * the test one: a missing {@code uploads_dir} binds to null and the context dies in
+     * {@code Path.of(null)}, which is not an obvious failure to read from the other end.
+     */
+    @Test
+    void shipsAnUploadsDirectoryAndKeepsUploadsForever() {
+        DatasetConfig config = ConfigLoader.load().dataset();
+
+        assertThat(config.uploadsDir()).isNotBlank();
+        assertThat(config.uploadTtlDays()).isZero();
+    }
+
     @Test
     void acceptsHyphenatedTargetNamesLikePythonDid() {
-        DatasetConfig config = new DatasetConfig("tweet-hashtag",
+        DatasetConfig config = new DatasetConfig("tweet-hashtag", "data/uploads", 0,
                 new DatasetEntry("tweets", "data/raw/tweet_hashtag.csv"), null, null);
 
         assertThat(config.resolveTarget().file()).isEqualTo("data/raw/tweet_hashtag.csv");
@@ -43,7 +58,7 @@ class ConfigLoaderTest {
 
     @Test
     void failsWhenTheTargetDatasetHasNoFile() {
-        DatasetConfig config = new DatasetConfig("nexmark", null, null,
+        DatasetConfig config = new DatasetConfig("nexmark", "data/uploads", 0, null, null,
                 new DatasetEntry("Nexmark benchmark (future)", null));
 
         assertThatThrownBy(config::resolveTarget)
@@ -53,7 +68,7 @@ class ConfigLoaderTest {
 
     @Test
     void failsWhenTheTargetDatasetIsUnknown() {
-        DatasetConfig config = new DatasetConfig("stock-prices", null, null, null);
+        DatasetConfig config = new DatasetConfig("stock-prices", "data/uploads", 0, null, null, null);
 
         assertThatThrownBy(config::resolveTarget)
                 .isInstanceOf(IllegalStateException.class)

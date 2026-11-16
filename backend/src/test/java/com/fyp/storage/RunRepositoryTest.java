@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -56,6 +57,49 @@ class RunRepositoryTest {
     @Test
     void reportsAnUnknownRunIdAsAbsent() {
         assertThat(repository.findByRunId("run-19990101-0000-0000")).isEmpty();
+    }
+
+    @Test
+    void findsARecordedRunWithItsFinishTime() {
+        Instant finished = STARTED.plusSeconds(2);
+        sql.queueRows(new Row(List.of("run-20261114-1020-a7f3", RunRepository.toTimestamp(STARTED),
+                RunRepository.toTimestamp(finished), "ds-20261116-0931-4e11")));
+
+        assertThat(repository.find("run-20261114-1020-a7f3")).contains(
+                new Run("run-20261114-1020-a7f3", STARTED, finished, "ds-20261116-0931-4e11"));
+        assertThat(sql.lastQuery().sql())
+                .isEqualTo("SELECT run_id, started_at, finished_at, dataset FROM runs WHERE run_id = ?");
+    }
+
+    /** The null is the whole difference between a run that finished and one that died halfway. */
+    @Test
+    void anUnfinishedRunReadsWithoutAFinishTime() {
+        sql.queueRows(new Row(Arrays.asList("run-20261114-1020-a7f3",
+                RunRepository.toTimestamp(STARTED), null, "ds-20261116-0931-4e11")));
+
+        Run recorded = repository.find("run-20261114-1020-a7f3").orElseThrow();
+
+        assertThat(recorded.finishedAt()).isNull();
+        assertThat(recorded.startedAt()).isEqualTo(STARTED);
+    }
+
+    @Test
+    void listsEveryRunTheTableHolds() {
+        sql.queueRows(new Row(List.of("run-20261116-0000-0002", RunRepository.toTimestamp(STARTED),
+                        RunRepository.toTimestamp(STARTED.plusSeconds(1)), "ds-20261116-0931-4e11")),
+                new Row(List.of("run-20261116-0000-0001", RunRepository.toTimestamp(STARTED),
+                        RunRepository.toTimestamp(STARTED.plusSeconds(1)), "tweet_hashtag")));
+
+        assertThat(repository.findAll()).extracting(Run::runId)
+                .containsExactly("run-20261116-0000-0002", "run-20261116-0000-0001");
+        assertThat(sql.lastQuery().sql()).isEqualTo("SELECT run_id, started_at, finished_at, dataset"
+                + " FROM runs ORDER BY started_at DESC, run_id DESC");
+    }
+
+    @Test
+    void anEmptyTableListsNothing() {
+        assertThat(repository.find("run-19990101-0000-0000")).isEmpty();
+        assertThat(repository.findAll()).isEmpty();
     }
 
     @Test

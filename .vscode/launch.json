@@ -11,9 +11,9 @@
         },
         {
             "type": "jdk",
-            "name": "Smoke Check (Flink + DuckDB)",
+            "name": "Serve API (ApiApplication)",
             "request": "launch",
-            "mainClass": "com.fyp.ToolchainSmokeCheck",
+            "mainClass": "com.fyp.ApiApplication",
             "vmArgs": "--add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED",
             "cwd": "${workspaceFolder}/backend"
         },
@@ -21,7 +21,7 @@
             "type": "jdk",
             "name": "Run HelloWorld",
             "request": "launch",
-            "mainClass": "com.fyp.HelloWorld",
+            "mainClass": "com.fyp.Main",
             "cwd": "${workspaceFolder}/backend"
         }
     ]

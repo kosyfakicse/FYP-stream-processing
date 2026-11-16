@@ -7,6 +7,13 @@
 dataset:
   target_dataset: "tweet_hashtag"
 
+  # Where POST /datasets puts uploaded csvs. Relative to backend/, like every other path here.
+  uploads_dir: "../data/uploads"
+
+  # Uploads older than this get collected by DatasetRepository.deleteExpired(). Zero means keep
+  # uploads forever, so nothing is deleted until something calls it on a schedule.
+  upload_ttl_days: 0
+
   tweet_hashtag:
     description: "Generated tweets dataset from script"
     file: "../data/raw/tweet_hashtag.csv"

@@ -37,15 +37,16 @@
             "problemMatcher": []
         },
         {
-            "label": "java: run smoke check",
+            "label": "java: serve API (ApiApplication)",
             "type": "shell",
             "command": "cmd.exe",
             "args": [
                 "/d",
                 "/c",
                 "run.bat",
-                "smoke"
+                "serve"
             ],
+            "isBackground": true,
             "problemMatcher": []
         },
         {

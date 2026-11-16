@@ -22,6 +22,20 @@ CREATE TABLE IF NOT EXISTS runs (
     provenance_enabled BOOLEAN NOT NULL
 );
 
+-- Uploaded csvs are kept as files in the uploads directory, not as blobs: dataset_id names the file,
+-- so the row is what makes an id mean something again after a restart.
+--
+-- expires_at is NULL when upload_ttl_days is zero, meaning keep until deleted by hand. Only
+-- DatasetRepository.deleteExpired reads it, and nothing schedules that call yet.
+CREATE TABLE IF NOT EXISTS datasets (
+    dataset_id VARCHAR PRIMARY KEY,
+    uploaded_at TIMESTAMP NOT NULL,
+    expires_at TIMESTAMP,
+    original_name VARCHAR NOT NULL,
+    size_bytes BIGINT NOT NULL,
+    row_count BIGINT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS tin_vertices (
     vertex_id VARCHAR PRIMARY KEY,
     run_id VARCHAR NOT NULL,

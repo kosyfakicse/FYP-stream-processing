@@ -1,6 +1,9 @@
 dataset:
   target_dataset: "nexmark"
 
+  uploads_dir: "data/uploads"
+  upload_ttl_days: 14
+
   tweet_hashtag:
     description: "tweets"
     file: "data/raw/tweet_hashtag.csv"

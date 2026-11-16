@@ -16,7 +16,8 @@ import com.fyp.config.ConfigLoader;
  *
  * @param runId the generated identifier, eg {@code run-20261114-2258-a7f3}
  * @param startedAt when the run began
- * @param dataset the dataset name it read
+ * @param dataset what the run read: a {@code ds-...} upload id over HTTP, else the configured
+ *        {@code target_dataset} name
  * @param configJson the config that produced it, stored verbatim in {@code runs.config_json}
  */
 public record RunContext(String runId, Instant startedAt, String dataset, String configJson) {
@@ -25,10 +26,18 @@ public record RunContext(String runId, Instant startedAt, String dataset, String
     private static final DateTimeFormatter STAMP =
             DateTimeFormatter.ofPattern("'run-'uuuuMMdd-HHmm");
 
+    /** The run the command line job makes: the dataset named in {@code config.yaml}. */
     public static RunContext start(AppConfig config) {
+        return start(config, config.dataset().targetDataset());
+    }
+
+    /**
+     * @param dataset what to record in {@code runs.dataset}, so a stored upload's run says which
+     *        upload it read instead of naming a config entry that has nothing to do with it
+     */
+    public static RunContext start(AppConfig config, String dataset) {
         Instant now = Instant.now();
-        return new RunContext(newRunId(now), now, config.dataset().targetDataset(),
-                ConfigLoader.toJson(config));
+        return new RunContext(newRunId(now), now, dataset, ConfigLoader.toJson(config));
     }
 
     /**

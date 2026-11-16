@@ -66,8 +66,12 @@ dependency-reduced-pom.xml
 data/raw/*.csv
 data/raw/*.parquet
 data/processed/*
+data/uploads/*
+# What `run.bat reset` moves out of the way: the old database and the csvs it had recorded.
+data/cleared-*/
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+!data/uploads/.gitkeep
 
 # Logs
 *.log
