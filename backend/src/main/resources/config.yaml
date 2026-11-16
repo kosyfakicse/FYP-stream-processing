@@ -1,0 +1,28 @@
+# Ported from legacy/configs/config.yaml.
+# The kafka section, the *_JAR paths and pipeline.run_id are gone: the Kafka stage is deferred,
+# Maven owns the classpath under Flink 2.2.1, and run ids are generated per execution now.
+#
+# Paths below are relative to backend/, the directory the job runs from.
+
+dataset:
+  target_dataset: "tweet_hashtag"
+
+  tweet_hashtag:
+    description: "Generated tweets dataset from script"
+    file: "../data/raw/tweet_hashtag.csv"
+
+  nyc_taxi:
+    description: "NYC Taxi dataset (future)"
+    file: null
+
+  nexmark:
+    description: "Nexmark benchmark (future)"
+    file: null
+
+flink:
+  parallelism: 1
+
+pipeline:
+  window_size_seconds: 60
+  batch_size: 100
+  duckdb_file: "../data/attribution.duckdb"

@@ -1,0 +1,20 @@
+dataset:
+  target_dataset: "nexmark"
+
+  tweet_hashtag:
+    description: "tweets"
+    file: "data/raw/tweet_hashtag.csv"
+
+  nexmark:
+    description: "Nexmark benchmark (future)"
+    file: null
+
+flink:
+  parallelism: 3
+
+pipeline:
+  window_size_seconds: 15
+  batch_size: 7
+  duckdb_file: "data/test.duckdb"
+
+unexpected_future_key: "must not break loading"

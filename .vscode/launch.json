@@ -1,0 +1,28 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "jdk",
+            "name": "Run Pipeline (AttributionJob)",
+            "request": "launch",
+            "mainClass": "com.fyp.AttributionJob",
+            "vmArgs": "--add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED",
+            "cwd": "${workspaceFolder}/backend"
+        },
+        {
+            "type": "jdk",
+            "name": "Smoke Check (Flink + DuckDB)",
+            "request": "launch",
+            "mainClass": "com.fyp.ToolchainSmokeCheck",
+            "vmArgs": "--add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED",
+            "cwd": "${workspaceFolder}/backend"
+        },
+        {
+            "type": "jdk",
+            "name": "Run HelloWorld",
+            "request": "launch",
+            "mainClass": "com.fyp.HelloWorld",
+            "cwd": "${workspaceFolder}/backend"
+        }
+    ]
+}

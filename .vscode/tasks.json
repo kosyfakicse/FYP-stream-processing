@@ -1,0 +1,77 @@
+{
+    "version": "2.0.0",
+    "//": "Every task delegates to backend/run.bat, which pins JAVA_HOME to JDK 17 for its own process and then calls Maven. cmd.exe is named explicitly so the task behaves the same whatever your default VS Code profile is.",
+    "options": {
+        "cwd": "${workspaceFolder}/backend"
+    },
+    "tasks": [
+        {
+            "label": "java: compile",
+            "type": "shell",
+            "command": "cmd.exe",
+            "args": [
+                "/d",
+                "/c",
+                "run.bat",
+                "compile"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "java: run pipeline (AttributionJob)",
+            "type": "shell",
+            "command": "cmd.exe",
+            "args": [
+                "/d",
+                "/c",
+                "run.bat"
+            ],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "java: run smoke check",
+            "type": "shell",
+            "command": "cmd.exe",
+            "args": [
+                "/d",
+                "/c",
+                "run.bat",
+                "smoke"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "java: test",
+            "type": "shell",
+            "command": "cmd.exe",
+            "args": [
+                "/d",
+                "/c",
+                "run.bat",
+                "test"
+            ],
+            "group": "test",
+            "problemMatcher": []
+        },
+        {
+            "label": "java: clean",
+            "type": "shell",
+            "command": "cmd.exe",
+            "args": [
+                "/d",
+                "/c",
+                "run.bat",
+                "clean"
+            ],
+            "problemMatcher": []
+        }
+    ]
+}

@@ -1,0 +1,10 @@
+{
+    "//": "oracle.oracle-java is what is installed and what .vscode/settings.json + launch.json are written for. Do not install redhat.java / vscjava.vscode-java-pack alongside it -- two Java language servers in one workspace fight over the same files.",
+    "recommendations": [
+        "oracle.oracle-java",
+        "htmltab.duckdb",
+        "mechatroner.rainbow-csv",
+        "redhat.vscode-yaml",
+        "ms-python.python"
+    ]
+}
