@@ -24,9 +24,11 @@
              A bare "5.0.0" does NOT exist and will fail dependency resolution.
 
           2. duckdb_jdbc uses FOUR-part versions (X.Y.Z.N); the first three track the DuckDB
-             engine release. This must be the SAME DuckDB major.minor as the Python `duckdb`
-             package used by the Streamlit frontend, otherwise the Java driver writes a file
-             the Python reader rejects with a storage-format error.
+             engine release. Nothing in Python opens the database file any more: requirements.txt
+             is requests only, and reads go through GET /runs/{runId}. So this coupling now
+             concerns only a hand-installed `duckdb` package used to inspect the file. Match its
+             major.minor to the driver below. A newer driver can read an older file, an older
+             driver cannot read a newer one.
                 Java 2.0.0.1  <->  Python 2.0.0
         -->
         <flink.version>2.2.1</flink.version>
