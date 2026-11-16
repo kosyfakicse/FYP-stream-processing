@@ -27,11 +27,17 @@ env/
 .venv
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo
 *~
+
+# Share the reproducible Java dev config; ignore only personal overrides
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -43,7 +49,16 @@ htmlcov/
 *.cover
 .hypothesis/
 
-# DuckDB
+# Java / Maven
+backend/target/
+*.class
+*.jar
+dependency-reduced-pom.xml
+.mvn/wrapper/maven-wrapper.properties
+.mvn/wrapper/maven-wrapper.jar
+*.iml
+
+# DuckDB (regenerated at runtime; the Java backend and Streamlit both write here)
 *.duckdb
 *.duckdb.wal
 
@@ -51,8 +66,12 @@ htmlcov/
 data/raw/*.csv
 data/raw/*.parquet
 data/processed/*
+data/uploads/*
+# What `run.bat reset` moves out of the way: the old database and the csvs it had recorded.
+data/cleared-*/
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+!data/uploads/.gitkeep
 
 # Logs
 *.log

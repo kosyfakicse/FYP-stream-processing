@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logback picks this up from the classpath automatically. Without it Logback falls back to its
+  built-in default of root=DEBUG, and because Flink core is compile-scoped (see README) every
+  internal metric registration and actor lifecycle event prints to the terminal: 325 of the 524
+  lines in a single `run.bat` invocation.
+
+  Set org.apache.flink and org.apache.pekko back to DEBUG to watch watermark advancement or window
+  firing when a job produces no output.
+-->
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level %logger{20} -- %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="org.apache.flink" level="WARN"/>
+    <logger name="org.apache.pekko" level="WARN"/>
+
+    <!--
+      Expected in local mode on Windows, and they print stack traces that look alarming:
+      MetricUtils wants the Unix-only open-file-descriptor bean; the token manager has no Kerberos
+      to talk to; WebMonitorUtils only matters for the Flink dashboard this project never opens.
+    -->
+    <logger name="org.apache.flink.runtime.metrics.util.MetricUtils" level="ERROR"/>
+    <logger name="org.apache.flink.runtime.security.token.DefaultDelegationTokenManager" level="ERROR"/>
+    <logger name="org.apache.flink.runtime.webmonitor.WebMonitorUtils" level="ERROR"/>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+</configuration>

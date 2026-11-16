@@ -1,26 +1,14 @@
-# Core streaming
-confluent-kafka>=2.3.0
-apache-flink>=1.18.0
-
-# Database
-duckdb>=1.0.0
-
-# Dashboard
-streamlit>=1.30.0
-plotly>=5.18.0
-
-# Data processing
-pandas>=2.0.0
-pyarrow>=14.0.0
-pyyaml>=6.0
-
-# Data validation and typing
-pydantic>=2.5.0
-pydantic-settings>=2.1.0
-
-# Logging
-loguru>=0.7.0
-
-# Testing
-pytest>=7.0.0
-pytest-cov>=4.1.0
+# Everything the Python side of this project needs. The pipeline, the storage and the HTTP API are
+# Java (backend/pom.xml, and Maven is where those dependencies live); the only Python file left in
+# the repository is frontend/test.py, an API client, so the only third-party import is requests.
+#
+# Dropped because nothing imports them any more: apache-flink and confluent-kafka (the job runs on
+# the Java MiniCluster, and Kafka itself comes from docker/docker-compose.yml), streamlit and plotly
+# (no dashboard built yet), pandas and pyarrow (the csv is parsed by CsvDatasetLoader), pyyaml
+# (config.yaml is read by Jackson), pydantic and pydantic-settings, loguru, pytest and pytest-cov.
+#
+# duckdb is dropped too, since GET /runs/{runId} is how results are read now. If you want to open
+# ../data/attribution.duckdb from Python anyway, install it by hand at `duckdb~=2.0.0`: the Java
+# driver is 2.0.0.1, a newer driver can read an older file but not the reverse, and the file is held
+# by one process at a time -- so do it while no server is running.
+requests>=2.31.0

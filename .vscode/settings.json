@@ -1,0 +1,38 @@
+{
+    "//": "Configured for the Oracle Java extension (oracle.oracle-java), whose settings are namespaced jdk.* -- not the redhat.java java.* keys. Teammates: point both paths at your own JDK 17.",
+    "jdk.jdkhome": "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.21.9-hotspot",
+    "jdk.project.jdkhome": "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.21.9-hotspot",
+
+    "//why-search-limit": "The Maven project is nested at backend/pom.xml while the workspace root is the repo, which also holds 13k files under .venv. Oracle's extension caps how far it searches for project information, so it started without importing anything and no semantic highlighting was produced.",
+    "jdk.advanced.disable.projectSearchLimit": true,
+    "//why-verbose": "Temporary. Shows whether a project was discovered in Output > Oracle Java Tools. Set false once the Java Projects view lists fyp-attribution-backend.",
+    "jdk.verbose": true,
+
+    "//why-semantic": "Type references (Logger, AttributionService.class) are coloured only by the language server, never by the TextMate grammar.",
+    "editor.semanticHighlighting.enabled": true,
+
+    "//why-color-customization": "Oracle's java.tmLanguage.json defines exactly four type scopes -- class, enum, record, module -- and has no interface scope, so `interface Foo` can only ever be coloured by semantic tokens. These keys make type colour uniform regardless of theme.",
+    "workbench.colorCustomizations": {
+        "editorSemanticClass": "#4EC9B0",
+        "editorSemanticInterface": "#4EC9B0",
+        "editorSemanticEnum": "#4EC9B0",
+        "editorSemanticTypeParameter": "#4EC9B0",
+        "editorSemanticNamespace": "#4EC9B0"
+    },
+
+    "//why-jdk17": "Bare `java` on PATH resolves to Oracle's Java 20 shim. Flink 2.2.1 does not support 20, so the project JDK must be pinned here as well as in backend/run.bat.",
+
+    "//coderunner": "Code Runner's default java command is `javac Main.java && java Main`, which fails on any packaged class with NoClassDefFoundError: Main (wrong name: com/fyp/attribution/Main). Source-file mode takes the .java path directly and derives the package itself, so it works. The path is hardcoded rather than $env:JAVA_HOME because Git Bash expands $env before PowerShell sees it. Limitation: source-file mode sees no classpath, so the button only works for dependency-free files like Main, not for the Flink classes.",
+    "code-runner.runInTerminal": true,
+    "code-runner.executorMap": {
+        "java": "powershell -NoProfile -Command \"& 'C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.21.9-hotspot\\bin\\java.exe' '$fullFileName'\""
+    },
+
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+
+    "[java]": {
+        "editor.tabSize": 4,
+        "editor.detectIndentation": false
+    }
+}

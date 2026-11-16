@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.fyp</groupId>
+    <artifactId>fyp-attribution-backend</artifactId>
+    <version>0.1.0</version>
+    <packaging>jar</packaging>
+
+    <name>FYP Temporal Attribution - Streaming Backend</name>
+    <description>Kafka -&gt; Flink -&gt; DuckDB pipeline with how-much provenance capture</description>
+
+    <properties>
+        <maven.compiler.release>17</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!--
+          Version coupling is strict and the NAMING IS A TRAP. Verified live against Maven Central.
+
+          1. flink-connector-kafka versions are suffixed with the Flink version they target:
+             3.4.0-1.20 (Flink 1.20.x) | 4.0.1-2.0 (Flink 2.0.x) | 5.0.0-2.1 | 5.0.0-2.2
+             A bare "5.0.0" does NOT exist and will fail dependency resolution.
+
+          2. duckdb_jdbc uses FOUR-part versions (X.Y.Z.N); the first three track the DuckDB
+             engine release. Nothing in Python opens the database file any more: requirements.txt
+             is requests only, and reads go through GET /runs/{runId}. So this coupling now
+             concerns only a hand-installed `duckdb` package used to inspect the file. Match its
+             major.minor to the driver below. A newer driver can read an older file, an older
+             driver cannot read a newer one.
+                Java 2.0.0.1  <->  Python 2.0.0
+        -->
+        <flink.version>2.2.1</flink.version>
+        <flink.kafka.connector.version>5.0.0-2.2</flink.kafka.connector.version>
+        <duckdb.version>2.0.0.1</duckdb.version>
+
+        <!--
+          Spring Boot 4.1.2 is the newest non-RC release on Central (4.2.0-RC2 exists but is a
+          release candidate). Verified, not assumed:
+
+          - javap under the pinned JDK 17 reports class-file major version 61 for both
+            org.springframework.boot.SpringApplication and tools.jackson JsonMapper, and the
+            official System Requirements page states Java 17 as the floor. So Boot 4 runs here.
+          - Its BOM manages TWO Jackson lines at once: com.fasterxml 2.21.7 and tools.jackson
+            3.1.7. Boot serialises HTTP bodies with Jackson 3; this project's config.yaml and
+            attribution_json stay on Jackson 2. That split only stays safe if the versions come
+            from one place, which is why the jackson/slf4j/logback properties are gone.
+          - The BOM also pins JUnit 6.0.3, and that pin wins whether we ask for it or not:
+            declaring junit-jupiter 5.11.4 directly still resolved junit-jupiter-api, -engine and
+            -params to 6.0.3, because the BOM manages those three individually. So the test stack
+            moved to JUnit 6 as a fact, and the only honest response was to stop pretending
+            otherwise. Checked rather than assumed: all 48 pre-existing tests are green on 6.0.3
+            under surefire 3.5.2.
+        -->
+        <spring-boot.version>4.1.2</spring-boot.version>
+
+        <!-- Entry point for `mvn exec:exec`, i.e. the CLI job in AttributionJob. The packaged jar's
+             main class is set separately on spring-boot-maven-plugin, which owns packaging now. -->
+        <mainClass>com.fyp.AttributionJob</mainClass>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Import, not <parent>: inheriting Boot's parent would replace the plugin versions
+                 and properties this pom already pins deliberately. -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- ========== Flink core ========== -->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-streaming-java</artifactId>
+            <version>${flink.version}</version>
+        </dependency>
+
+        <!-- Required to run jobs in-process from VSCode / MiniCluster -->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-clients</artifactId>
+            <version>${flink.version}</version>
+        </dependency>
+
+        <!-- Base classes for FLIP-27 Source and Sink V2 -->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-connector-base</artifactId>
+            <version>${flink.version}</version>
+        </dependency>
+
+        <!-- ========== Connectors ========== -->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-connector-kafka</artifactId>
+            <version>${flink.kafka.connector.version}</version>
+        </dependency>
+
+        <!-- ========== Storage ========== -->
+        <dependency>
+            <groupId>org.duckdb</groupId>
+            <artifactId>duckdb_jdbc</artifactId>
+            <version>${duckdb.version}</version>
+        </dependency>
+
+        <!-- ========== Config + JSON (Jackson 2; versions come from the Boot BOM) ==========
+             This project's own formats only: config.yaml parsing and attribution_json.
+             HTTP request/response bodies are handled by Boot with Jackson 3. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+
+        <!-- ========== Logging (versions come from the Boot BOM) ========== -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+        </dependency>
+
+        <!-- ========== HTTP API ==========
+             starter-web brings Tomcat 11, Spring MVC 7 and starter-jackson (Jackson 3).
+             Logging exclusions are NOT needed: log4j-to-slf4j routes Logback-safe, and Flink 2.x
+             core declares only slf4j-api, so there is a single binding. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- ========== Testing (versions come from the Boot BOM) ========== -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Flink MiniCluster test harness: run real operators without a cluster -->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-test-utils</artifactId>
+            <version>${flink.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!--
+          WebMvcTest / SpringBootTest / TestRestTemplate / Mockito bean overriding, so the HTTP
+          layer is tested the way it is actually reached rather than by calling the controller.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <release>17</release>
+                    <!-- Flink Kryo reflection needs these under JDK modularization -->
+                    <compilerArgs>
+                        <arg>-parameters</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.2</version>
+                <configuration>
+                    <argLine>
+                        --add-opens java.base/java.util=ALL-UNNAMED
+                        --add-opens java.base/java.lang=ALL-UNNAMED
+                        --add-opens java.base/java.time=ALL-UNNAMED
+                    </argLine>
+                </configuration>
+            </plugin>
+
+            <!-- `mvn exec:java` for running jobs in-process during development -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <configuration>
+                    <executable>java</executable>
+                    <arguments>
+                        <argument>--add-opens</argument>
+                        <argument>java.base/java.util=ALL-UNNAMED</argument>
+                        <argument>--add-opens</argument>
+                        <argument>java.base/java.lang=ALL-UNNAMED</argument>
+                        <argument>-classpath</argument>
+                        <classpath/>
+                        <argument>${mainClass}</argument>
+                    </arguments>
+                </configuration>
+            </plugin>
+
+            <!--
+              Replaces maven-shade-plugin. Boot's repackage builds an executable jar whose
+              Main-Class is the launcher and whose classes live in BOOT-INF/classes; that layout
+              is NOT what `flink run -c com.fyp.AttributionJob` expects, so submitting this jar to a
+              cluster is no longer possible from this module. Accepted deliberately: there is no
+              cluster, every run today goes through the in-process MiniCluster, and the README says
+              so. Restoring a submission-ready jar means either a second Maven module for the job or
+              putting shade back alongside Boot for the pipeline-only artifact.
+            -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>${spring-boot.version}</version>
+                <configuration>
+                    <mainClass>com.fyp.ApiApplication</mainClass>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
