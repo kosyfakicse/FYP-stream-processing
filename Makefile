@@ -1,57 +1,47 @@
-.PHONY: help install install-dev test test-unit test-integration test-e2e lint format clean run-dashboard run-kafka run-flink
+# The pipeline is Java and the real entry point is backend\run.bat, which locates the JDK and the
+# Maven wrapper by itself. This file only forwards, so the same words work from the repository root.
+#
+# Read this before trusting it: `make` is NOT installed on the machine this project was developed on
+# (checked 2026-11-16: `make --version` is not found in Git Bash or on PATH), so nothing here has been
+# executed. It is Windows-only -- the recipes assume cmd.exe and call .bat files. If you are on
+# macOS or Linux, or have no make at all, run backend\run.bat directly; it takes the same one word.
 
-help:  ## Show this help message
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+.PHONY: help compile serve job test clean reset client kafka-up kafka-down
 
-install:  ## Install dependencies
-	pip install -r requirements.txt
-	pip install -e .
+help:
+	@echo compile     compile only - backend\run.bat compile
+	@echo serve       start the HTTP API - backend\run.bat serve
+	@echo job         run the pipeline on the configured dataset - backend\run.bat
+	@echo test        the Java test suite - backend\run.bat test
+	@echo clean       delete backend\target - backend\run.bat clean
+	@echo reset       archive the dev database and uploads - backend\run.bat reset
+	@echo client      exercise the API from Python - python -m frontend.test
+	@echo kafka-up    start the Kafka stack - docker compose -f docker\docker-compose.yml
+	@echo kafka-down  stop it again
 
-install-dev:  ## Install development dependencies
-	pip install -r requirements.txt
-	pip install -e ".[dev]"
+compile:
+	cd backend && run.bat compile
 
-test:  ## Run all tests
-	pytest
+serve:
+	cd backend && run.bat serve
 
-test-unit:  ## Run unit tests only
-	pytest tests/unit/
+job:
+	cd backend && run.bat
 
-test-integration:  ## Run integration tests only
-	pytest tests/integration/
+test:
+	cd backend && run.bat test
 
-test-e2e:  ## Run end-to-end tests only
-	pytest tests/e2e/
+clean:
+	cd backend && run.bat clean
 
-test-cov:  ## Run tests with coverage report
-	pytest --cov=src/fyp_attribution --cov-report=html
+reset:
+	cd backend && run.bat reset
 
-lint:  ## Run linters
-	ruff check src/ tests/
-	mypy src/
+client:
+	.venv\Scripts\python.exe -m frontend.test
 
-format:  ## Format code
-	black src/ tests/
-	ruff check --fix src/ tests/
+kafka-up:
+	docker compose -f docker\docker-compose.yml up -d
 
-clean:  ## Clean up build artifacts
-	rm -rf build/ dist/ *.egg-info .pytest_cache htmlcov .coverage
-	find . -type d -name "__pycache__" -exec rm -rf {} +
-	find . -type f -name "*.pyc" -delete
-
-run-dashboard:  ## Run Streamlit dashboard
-	streamlit run src/fyp_attribution/dashboard/app.py
-
-run-kafka:  ## Start Kafka (requires Kafka installation)
-	@echo "Starting Kafka..."
-	# Add your Kafka start command here
-
-run-flink:  ## Start Flink cluster (requires Flink installation)
-	@echo "Starting Flink cluster..."
-	# Add your Flink start command here
-
-setup-data:  ## Generate test data
-	python scripts/data/generate_tweet_data.py
-
-verify-schema:  ## Verify schema correctness
-	python scripts/utils/verify_schema.py
+kafka-down:
+	docker compose -f docker\docker-compose.yml down
