@@ -4,25 +4,36 @@ Demonstration and Evaluation of How-Much Provenance in Streaming Dataflows
 
 ## Overview
 
-A streaming system that demonstrates **how-much provenance** through **temporal attribution**
-(TIN-based), focused on **backward attribution** (Where-From queries).
+A streaming system built to demonstrate **how-much provenance** through **temporal attribution**
+(TIN-based), the paper's design being **backward attribution** (Where-From queries). What it
+actually demonstrates today is narrower, and the gap is spelled out below rather than glossed.
 
 What exists today is the pipeline and the API around it: a Flink job that reads a tweet csv, extracts
 hashtags, attributes every hashtag over event-time tumbling windows, and stores each firing window with
 the per-user counts that produced it. A Spring Boot HTTP API runs the job on a stored dataset and reads
-the results back, so nothing has to open the database file to show a run. Kafka replay, the TIN tables
-and the dashboard are still planned; see `backend/docs/API.md` for the endpoint contract and
-`backend/README.md` for the reasoning behind it.
+the results back, so nothing has to open the database file to show a run. See `backend/docs/API.md` for
+the endpoint contract and `backend/README.md` for the reasoning behind it.
+
+That is the how-much half, and only the half. **The backward-attribution traversal is not implemented.**
+`window_outputs.vertex_id` is the constant `W1`, because there is no TIN vertex for
+`WindowOutputRepository` to point at, and the four `tin_*` tables that `schema.sql` creates at startup
+are created but never written to. Kafka replay and the dashboard are still planned too.
 
 ### Core Question
 > "Which tweets/users caused this hashtag to trend?"
+
+What the system answers today is the counts behind that question -- who contributed how much to one
+firing window. The Where-From traversal over a temporal interaction network is the target, not the
+current behaviour.
 
 ### Architecture
 
 ```
 csv dataset -> Flink (windows + attribution) -> DuckDB (window_outputs) -> HTTP API -> client
                     ^                                    ^
-              planned: Kafka replay                planned: TIN tables, dashboard
+             planned: Kafka replay        tin_* tables exist and stay empty: the backward
+                                          attribution that fills them is not built yet,
+                                          and neither is the dashboard
 ```
 
 ## Project Structure
@@ -33,6 +44,9 @@ FYP-stream-processing/
 |-- README.md                           # this file
 |-- Makefile                            # forwards to backend\run.bat; see the note at its top
 |-- requirements.txt                    # Python deps: requests, for the API client only
+|-- .gitignore
+|-- .env.example                        # stale: Python-era keys (Streamlit, Kafka), nothing reads them
+|-- .vscode/                            # launch.json, tasks.json, settings.json for Java + Python
 |-- backend/                            # the whole system: Java, Flink, DuckDB, Spring Boot
 |   |-- pom.xml                         # Java dependencies and versions
 |   |-- run.bat                         # compile | serve | test | clean | reset
@@ -41,7 +55,8 @@ FYP-stream-processing/
 |   |-- src/main/java/com/fyp/          # api/ service/ pipeline/ storage/ config/ model/
 |   |-- src/main/resources/             # config.yaml, application.properties, schema.sql
 |   +-- src/test/java/com/fyp/          # 108 tests
-|-- data/                               # gitignored: attribution.duckdb, uploads/, raw/
+|-- data/                               # a clone holds exactly one file, data/uploads/.gitkeep: every
+|                                       # csv, parquet, the duckdb file and cleared-* archives are ignored
 |-- docker/                             # Kafka + Kafka UI for the replay step (not wired yet)
 |-- frontend/
 |   +-- test.py                         # Python API client and smoke test
@@ -57,24 +72,50 @@ FYP-stream-processing/
 - **Maven** -- you do not need it on `PATH`. `run.bat` finds the wrapper distribution under
   `%USERPROFILE%\.m2\wrapper\dists\apache-maven-3.9.9\` and downloads the jars from Maven Central on
   first build (about 85 jars, 171 MB, into `%USERPROFILE%\.m2\repository`).
-- **Python 3.10 + a `.venv`** only if you want to run the API client. `pip install -r requirements.txt`.
+- **Python 3.10** only if you want to run the API client, and only for `requests`. The repository does
+  not carry the environment: `uv venv --python 3.10 .venv` (or `py -3.10 -m venv .venv`), then
+  `pip install -r requirements.txt`. The `.venv` this was developed against is 3.10.22.
 - **Docker** only for the Kafka stack, which nothing reads from yet.
 
 ### Installation
 
 ```cmd
-git clone <repository-url>
+git clone https://github.com/kosyfakicse/FYP-stream-processing.git
 cd FYP-stream-processing
 backend\run.bat test
 ```
 
-That is the whole check: it compiles and runs 108 tests, and needs no database, no Kafka and no
-cluster. Expected tail of the output:
+That is the whole check: it compiles and runs 108 tests, and needs no database, no dataset, no Kafka and
+no cluster -- every test builds its own storage under a temporary directory. Expected tail of the output:
 
 ```
 [INFO] Tests run: 108, Failures: 0, Errors: 0, Skipped: 0
 [INFO] BUILD SUCCESS
 ```
+
+### Supply a dataset
+
+A clone contains no csv. `data\raw\*.csv` is gitignored, and the generator the Python version shipped
+(`scripts/data/generate_tweet_data.py`) is gone with all of `scripts/`, so nothing on disk matches
+`dataset.tweet_hashtag.file` in `backend/src/main/resources/config.yaml`. Two ways forward:
+
+- **Skip the file entirely.** `backend\run.bat serve` plus the Python client uploads a five-row csv
+  built in memory, so the HTTP route needs no dataset on disk at all.
+- **Make the file** if you want the CLI job route, which reads the path from config rather than an
+  upload. Header exactly `user_id,text,timestamp`, one hashtag per row, and rows in timestamp order:
+
+```
+user_id,text,timestamp
+user_1,#DATA is awesome,1793844033600
+user_3,#AI is awesome,1793844033601
+user_2,#PYTHON is awesome,1793844033602
+user_1,#AI is awesome,1793844033603
+user_2,#AI is awesome,1793844033604
+```
+
+Saved as `data\raw\tweet_hashtag.csv`. Quoting is not supported: `CsvDatasetLoader` splits each line on
+the first two commas, so a comma inside the text lands in the timestamp column and the row fails to
+parse. Missing file is an `IllegalStateException: Dataset not found: <path>`, thrown when the job starts.
 
 ## Usage
 
@@ -84,18 +125,22 @@ cluster. Expected tail of the output:
 backend\run.bat serve
 ```
 
-The port is `server.port` in `backend/src/main/resources/application.properties` (8000 today). Upload
-a csv, run it, read it back:
+The port is `server.port` in `backend/src/main/resources/application.properties` (8000 today). The four
+calls below are the whole route, and each id is whatever the call before it printed, so substitute it
+rather than copying the placeholder:
 
 ```cmd
-curl -X POST -H "Content-Type: text/csv" --data-binary @data\raw\tweet_hashtag.csv "http://localhost:8000/datasets?name=october.csv"
-curl -X POST -H "Content-Type: application/json" -d "{\"datasetId\":\"ds-20261116-0945-1a5a\"}" http://localhost:8000/runs
-curl http://localhost:8000/runs/run-20261116-0946-236e
+curl -X POST -H "Content-Type: text/csv" --data-binary @data\raw\tweet_hashtag.csv "http://localhost:8000/datasets?name=tweet_hashtag.csv"
+curl http://localhost:8000/datasets
+curl -X POST -H "Content-Type: application/json" -d "{\"datasetId\":\"ds-...\"}" http://localhost:8000/runs
+curl http://localhost:8000/runs/run-...
 ```
 
-`data\raw\tweet_hashtag.csv` is not in git. The input must be sorted by timestamp, because the windows
-are event-time and a late event is dropped silently rather than failing the run; `POST /datasets`
-rejects an unsorted file for that reason.
+This route wants a csv on disk to upload, so it needs **Supply a dataset** above; the Python client does
+not, because it builds its own bytes in memory. An unsorted file is refused at upload by `DatasetScan`,
+before anything is stored: the windows are event-time with a monotonic watermark, so unsorted rows would
+answer 200 and silently drop every event that looks late rather than failing the run. Request and
+response bodies are in `backend/docs/API.md`.
 
 ### Run the pipeline without HTTP
 
@@ -104,6 +149,8 @@ backend\run.bat
 ```
 
 Uses `dataset.target_dataset` from `backend/src/main/resources/config.yaml` and writes the same tables.
+This is the route that needs the csv from **Supply a dataset** above; with no file at that path it fails
+at startup.
 
 ### Exercise the API from Python
 
@@ -151,20 +198,22 @@ the `outputCount` of the window. `backend/docs/API.md` documents the JSON this c
 | v2 | NYC Taxi | Real-world validation | ~10M rows | Weeks 11-12 |
 | v3 | Nexmark benchmark | Performance evaluation | Configurable | Weeks 11-12 |
 
+## Work
+
+Student A (Vincent): Java backend
+
+StudenT B (Leo): Python Frontend
+
 ## Development
 
 - `backend/README.md` is where the constraints live: the Flink 2.x breaking changes, the version
   coupling in `pom.xml`, why the sink is hand-written rather than `flink-connector-jdbc`, and the
-  layering rule that keeps Spring out of `pipeline/` and `storage/`.
+  rule that `api/` is the only package allowed to mention Spring.
 - `backend/docs/API.md` is the contract. If you change an endpoint, both that file and
   `frontend/test.py` need to move with it.
-- The Java tests are the only test suite. There is no lint or format step configured; the compiler
-  level is fixed at release 17 with `-parameters`.
-
-## Team
-
-- **Student A (Kalifa):** Data Pipeline & Processing
-- **Student B:** Provenance, Storage & Dashboard
+- The Java tests are the only test suite, and `frontend/test.py` is a smoke test against a live server,
+  not part of it. There is no lint or format step configured; the compiler level is fixed at release 17
+  with `-parameters`.
 
 ## References
 
