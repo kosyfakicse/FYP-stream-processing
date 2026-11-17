@@ -12,3 +12,15 @@
 # driver is 2.0.0.1, a newer driver can read an older file but not the reverse, and the file is held
 # by one process at a time -- so do it while no server is running.
 requests>=2.31.0
+
+# Dashboard
+streamlit>=1.30.0
+plotly>=5.18.0
+pandas>=2.0.0
+duckdb>=1.0.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+loguru>=0.7.0
+pyarrow>=14.0.0
+
+
