@@ -60,6 +60,8 @@ FYP-stream-processing/
 |-- docker/                             # Kafka + Kafka UI for the replay step (not wired yet)
 |-- frontend/
 |   +-- test.py                         # Python API client and smoke test
+|-- scripts/data/
+|   +-- generate_tweet_data.py          # makes the csv the pipeline reads; stdlib only
 +-- related-work/                       # reference papers
 ```
 
@@ -95,14 +97,34 @@ no cluster -- every test builds its own storage under a temporary directory. Exp
 
 ### Supply a dataset
 
-A clone contains no csv. `data\raw\*.csv` is gitignored, and the generator the Python version shipped
-(`scripts/data/generate_tweet_data.py`) is gone with all of `scripts/`, so nothing on disk matches
-`dataset.tweet_hashtag.file` in `backend/src/main/resources/config.yaml`. Two ways forward:
+A clone contains no csv: `data\raw\*.csv` is gitignored, so nothing on disk matches
+`dataset.tweet_hashtag.file` in `backend/src/main/resources/config.yaml`. Generate one:
 
-- **Skip the file entirely.** `backend\run.bat serve` plus the Python client uploads a five-row csv
-  built in memory, so the HTTP route needs no dataset on disk at all.
-- **Make the file** if you want the CLI job route, which reads the path from config rather than an
-  upload. Header exactly `user_id,text,timestamp`, one hashtag per row, and rows in timestamp order:
+```cmd
+python scripts/data/generate_tweet_data.py --dry-run
+python scripts/data/generate_tweet_data.py --records 500 --end "2026-11-05 10:30:00"
+```
+
+That script is one stdlib-only file -- `scripts/data/generate_tweet_data.py`, deleted by `fcc44ef` along
+with the `configs/tweets_config.json` it used to read, with the config folded into flags and constants.
+`RECORDS`, `START`, `END` and `WINDOW_SIZE_SECONDS` at the top of the file are the row count, the
+event-time range and the tumbler: 50 rows, 10:00:00 to 10:05:00 local with `END` exclusive, 60s windows.
+`--records` / `--start` / `--end` / `--window-size-seconds` override them without editing the file, and
+the size has to keep matching `pipeline.window_size_seconds` in config.yaml or the boundaries the script
+reports are not the windows the run fires.
+
+It also prints, for every firing window, the `outputCount` and the per-category counts the run should
+store -- the known answer to check against `GET /runs/{runId}`. It writes `data\raw\tweet_hashtag.csv`,
+the path config.yaml already names, and refuses to replace an existing file unless you pass `--force`,
+because nothing in git can bring that upload back.
+
+Two rules it enforces come from the Java reader rather than from csv practice: rows are sorted by
+timestamp, because `DatasetScan` refuses an unsorted upload instead of letting monotonic watermarks drop
+events quietly, and no text may contain a comma, because `CsvDatasetLoader` splits on the first two
+commas and does no quote handling.
+
+Or skip the file. `python -m frontend.test` uploads a five-row csv it builds in memory, so the HTTP
+route needs nothing on disk at all.
 
 ```
 user_id,text,timestamp
@@ -113,9 +135,8 @@ user_1,#AI is awesome,1793844033603
 user_2,#AI is awesome,1793844033604
 ```
 
-Saved as `data\raw\tweet_hashtag.csv`. Quoting is not supported: `CsvDatasetLoader` splits each line on
-the first two commas, so a comma inside the text lands in the timestamp column and the row fails to
-parse. Missing file is an `IllegalStateException: Dataset not found: <path>`, thrown when the job starts.
+That is what the client sends, and what a hand-written file has to look like: header exactly
+`user_id,text,timestamp`, one hashtag per row at minimum, timestamps in non-decreasing order.
 
 ## Usage
 
@@ -181,14 +202,16 @@ Input, one 1-minute window:
   user_1: "#AI is awesome"
   user_2: "#AI is awesome"
 
-Output:
-  #AI     count 3   attribution {user_1: 1, user_2: 1, user_3: 1}
-  #DATA   count 1   attribution {user_1: 1}
-  #PYTHON count 1   attribution {user_2: 1}
+Output, as `GET /runs/{runId}` stores it (the extractor upper-cases and drops the `#`):
+  AI      outputCount 3   attribution {user_1: 1, user_2: 1, user_3: 1}
+  DATA    outputCount 1   attribution {user_1: 1}
+  PYTHON  outputCount 1   attribution {user_2: 1}
 ```
 
-Every hashtag is keyed separately, so no filtering step is needed, and the attribution counts sum to
-the `outputCount` of the window. `backend/docs/API.md` documents the JSON this comes back as.
+Every hashtag is keyed separately, so no filtering step is needed, and the attribution counts sum to the
+`outputCount` of the window. `backend/docs/API.md` documents the JSON this comes back as, and
+`scripts/data/generate_tweet_data.py` prints the same three numbers for whatever file it generates, so a
+larger dataset has a known answer to check too.
 
 ## Datasets
 
