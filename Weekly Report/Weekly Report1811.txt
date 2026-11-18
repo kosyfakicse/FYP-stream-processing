@@ -2,6 +2,8 @@
 Java 17, Apache Flink 2.2.1, Spring Boot 4.1.2, Maven 3.9.9, streamlit 1.30.0
 
 2. SYSTEM
+Backend use java and Fontend use python
+
 Using API for connecting backend and frontend
 
 API:
@@ -34,6 +36,10 @@ flink/: Implements watermark assignment, hashtag extraction, stateful attributio
 sink/: Custom Sink V2 implementation, write data to DuckDB through its driver
 
 storage/: Database access layer SqlExecutor interface by DuckDB
+
+APIapplication.java for job from frontend
+
+AttributionJob.java for single job (terminal entry)
 
 Frontend:
 1_Overview.py:
@@ -76,3 +82,4 @@ Frontend get the run data and window result using API call filter by the run ID.
 
 Step 5:
 The process data show on the table and chart on the 5 query.
+
