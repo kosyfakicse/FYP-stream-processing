@@ -56,7 +56,7 @@ def main():
         #response = get_dataset()
         #response = post_run("ds-20261116-1244-8173")
         #response = get_runs()
-        response = get_run('run-20261116-1249-1f19')
+        response = get_run('run-20261116-1359-4157')
         print(response.status_code)   # parsed: dict / list
         print(response.json())                           # raw string, exactly the bytes
 
