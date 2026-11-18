@@ -1,3 +1,4 @@
+import re
 import time
 import pandas as pd
 import requests
@@ -13,7 +14,29 @@ from components.data_utils import (
 
 init_page("Insert Data")
 
-# Initialize session state
+# Helper Function
+def sanitize_csv_filename(raw_name: str) -> str:
+    """Ensure every upload has a clean, backend-safe .csv filename."""
+    if not raw_name or not raw_name.strip():
+        return "streamlit_upload.csv"
+
+    # Remove directory paths if any, strip whitespace
+    base = raw_name.strip().split("/")[-1].split("\\")[-1]
+
+    # Remove existing .csv extension (case-insensitive)
+    base = re.sub(r"\.csv$", "", base, flags=re.IGNORECASE)
+
+    # Replace spaces and unsafe characters with underscores
+    clean_base = re.sub(r"[^a-zA-Z0-9_-]", "_", base).strip("_")
+    if not clean_base:
+        clean_base = "streamlit_upload"
+
+    return f"{clean_base}.csv"
+
+
+# ==========================================
+# Initialize Session State
+# ==========================================
 if "prepared_df" not in st.session_state:
     base_ts = int(time.time() * 1000)
     st.session_state.prepared_df = pd.DataFrame({
@@ -21,6 +44,9 @@ if "prepared_df" not in st.session_state:
         "text": ["#UST #DATA", "#AI #DATA", "Who else uses #AI?"],
         "timestamp": [base_ts, base_ts + 1200, base_ts + 2400],
     })
+
+if "dataset_filename" not in st.session_state:
+    st.session_state.dataset_filename = "streamlit_upload.csv"
 
 if "latest_run_id" not in st.session_state:
     st.session_state.latest_run_id = None
@@ -65,21 +91,36 @@ with tab1:
             "Upload CSV file (Required columns: user_id, text, timestamp)",
             type=["csv"],
         )
+
         if uploaded_file is not None:
-            # Explicit check so non-CSV files show an error
             if not uploaded_file.name.lower().endswith(".csv"):
                 st.error("Only .csv files are allowed. Please upload a valid CSV file.")
+                if "prepared_df" in st.session_state:
+                    del st.session_state.prepared_df
+                st.stop()
             else:
                 try:
                     df_uploaded = pd.read_csv(uploaded_file)
                     is_valid, msg = validate_schema(df_uploaded)
+
                     if is_valid:
-                        st.success(msg)
+                        clean_name = sanitize_csv_filename(uploaded_file.name)
                         st.session_state.prepared_df = df_uploaded
+                        st.session_state.dataset_filename = clean_name
+                        st.session_state.is_file_valid = True
+                        st.success(f"{msg} (Dataset name: `{clean_name}`)")
+
                     else:
                         st.error(msg)
+                        if "prepared_df" in st.session_state:
+                            del st.session_state.prepared_df
+                        st.stop()
+
                 except Exception as e:
                     st.error(f"Failed to read CSV file: {e}")
+                    if "prepared_df" in st.session_state:
+                        del st.session_state.prepared_df
+                    st.stop()
 
 # Tab 2: System Generate with Parameters
 with tab2:
@@ -109,6 +150,9 @@ with tab2:
             st.session_state.prepared_df = generate_mock_tweets(
                 num_rows, num_users, tag_list, interval_ms
             )
+            st.session_state.dataset_filename = sanitize_csv_filename(
+                f"generated_{num_rows}_rows.csv"
+            )
             st.success(f"Successfully generated {num_rows} rows.")
 
 # Tab 3: Full Custom Editor
@@ -127,6 +171,9 @@ with tab3:
         is_valid, msg = validate_schema(edited_df)
         if is_valid:
             st.session_state.prepared_df = edited_df
+            st.session_state.dataset_filename = sanitize_csv_filename(
+                st.session_state.dataset_filename
+            )
             st.success("Dataset updated successfully.")
         else:
             st.error(msg)
@@ -162,20 +209,23 @@ st.markdown("---")
 # ==========================================
 st.subheader("3. Pipeline Execution")
 
+safe_filename = sanitize_csv_filename(st.session_state.dataset_filename)
+st.caption(f"Target upload filename: `{safe_filename}`")
+
 if st.button("Send & Run Pipeline", type="primary"):
     is_valid, msg = validate_schema(df_current)
     if not is_valid:
         st.error(f"Validation Failed: {msg}")
     else:
         try:
-            with st.spinner("Sending dataset to Java backend..."):
-                # 1. Convert DataFrame to CSV bytes
+            with st.spinner(f"Sending '{safe_filename}' to Java backend..."):
+                # 1. Convert DataFrame to raw CSV bytes
                 csv_bytes = df_current.to_csv(index=False).encode("utf-8")
 
-                # 2. POST /datasets (raw CSV)
+                # 2. POST /datasets with raw CSV bytes and Content-Type: text/csv
                 upload_resp = requests.post(
                     f"{BACKEND_API_URL}/datasets",
-                    params={"name": "streamlit_upload.csv"},
+                    params={"name": safe_filename},
                     data=csv_bytes,
                     headers={"Content-Type": "text/csv"},
                     timeout=30,
@@ -195,6 +245,9 @@ if st.button("Send & Run Pipeline", type="primary"):
                 st.session_state.latest_run_id = run_id
                 st.success(f"Pipeline finished. Run ID: {run_id}")
 
+        except requests.exceptions.HTTPError as e:
+            detail = e.response.text if e.response is not None else str(e)
+            st.error(f"Backend API Error ({e.response.status_code}): {detail}")
         except Exception as e:
             st.error(f"Backend API Error: {e}")
 

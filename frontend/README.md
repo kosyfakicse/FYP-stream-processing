@@ -1,6 +1,6 @@
 # TIN Provenance Dashboard (Frontend)
 
-Streamlit dashboard for the **Temporal Interaction Network (TIN)** provenance system.  
+Streamlit dashboard for the **Temporal Interaction Network (TIN)** provenance system.
 It visualises attribution results produced by the Java / Flink backend pipeline.
 
 The dashboard communicates with the backend **only through the HTTP API** and never opens the DuckDB file directly.
@@ -45,7 +45,7 @@ frontend/
 
 1. **Java backend** running on port 8000 (or the port you configure):
    ```bash
-   cd ../backend
+   cd backend
    mvn compile exec:exec "-DmainClass=com.fyp.ApiApplication"
    ```
 

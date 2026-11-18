@@ -22,14 +22,25 @@ class QueryEngine:
 
     def list_contributors(self, run_id: Optional[str] = None) -> list[str]:
         users = set()
-        if self.df.empty or "attribution_json" not in self.df.columns:
-            return []
-        for raw in self.df["attribution_json"].dropna():
-            try:
-                data = raw if isinstance(raw, dict) else json.loads(raw)
-                users.update(data.keys())
-            except Exception:
-                pass
+
+        try:
+            import streamlit as st
+            if "prepared_df" in st.session_state and not st.session_state.prepared_df.empty:
+                users.update(st.session_state.prepared_df["user_id"].dropna().unique().tolist())
+        except Exception:
+            pass
+
+        if not self.df.empty and "user_id" in self.df.columns:
+            users.update(self.df["user_id"].dropna().unique().tolist())
+
+        if not self.df.empty and "attribution_json" in self.df.columns:
+            for raw in self.df["attribution_json"].dropna():
+                try:
+                    data = raw if isinstance(raw, dict) else json.loads(raw)
+                    users.update(data.keys())
+                except Exception:
+                    pass
+
         return sorted(users)
 
     def get_backward_query(self, output_id, run_id=None):

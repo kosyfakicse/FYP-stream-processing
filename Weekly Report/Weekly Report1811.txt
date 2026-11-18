@@ -1,0 +1,78 @@
+1. VERSION
+Java 17, Apache Flink 2.2.1, Spring Boot 4.1.2, Maven 3.9.9, streamlit 1.30.0
+
+2. SYSTEM
+Using API for connecting backend and frontend
+
+API:
+Dataset Endpoints (/datasets):
+POST /datasets: Validate and store raw CSV upload, returning a datasetId
+
+GET /datasets: List all store dataset
+
+GET /datasets/{datasetId}: Search data for a specific dataset
+
+DELETE /datasets/{datasetId}: Remove a dataset row and file from disk
+
+Run Endpoints (/runs):
+POST /runs: Execute the temporal attribution pipeline for a given dataset ID, returning a new runId
+
+GET /runs: List all execution run, newest first
+
+GET /runs/{runId}: Retrieve run data alongside all computed window attribution output.
+
+Backend:
+The core backend streaming pipeline independent of the Spring Boot.
+
+api/: Sprinng Boot REST controller. Only package reference Spring Boot.
+
+service/: Logic layer for connecting the controller and storage layer.
+
+pipeline/: The core proccessing engine,
+loader/: Handle CSV validation and parsing
+flink/: Implements watermark assignment, hashtag extraction, stateful attribution calculation
+sink/: Custom Sink V2 implementation, write data to DuckDB through its driver
+
+storage/: Database access layer SqlExecutor interface by DuckDB
+
+Frontend:
+1_Overview.py:
+For summary the top 5 trending hashtags and latest 5 window for the pipeline
+
+2_Query.py:
+All the query will filting by run ID
+
+Backend Provenance Query:
+Filter window by hashtag and output_id, it will show the Contributor Table and using pie chart and bar chart to show the weight of different user
+
+Forward Query:
+Select user for the forward query, it will show how much impacted window and total attributed volume and show the data table
+
+Temporal Lineage Query:
+Select Hashtag and show the trend chart of the volume evolution of time window and a window breakdown table
+
+Flow Lineage Query:
+Filter Minimum Flow Quantity and showing end-to-end provenance flow from user to target hashtag, also with a flow table
+
+Versioning & Window Comparison:
+Compares contributor weight and output count between two selected window for the same hashtag. Display net count change, a comparison bar chart and a different table
+
+4_Insert_Data.py:
+For dataset .csv checking and upload, system parameter generation and full custom data editing by using the API of backend
+
+
+3. SYSTEM WORKFLOW
+Step 1:
+User prepare a dataset and uploads it to the backend by POST /datasets return a dataset ID
+
+Step 2:
+Frontend send POST /runs to trigger the pipeline execution with dataset ID to Spring Boot backend, executing the Flink streaming job and return a run ID
+
+Step 3:
+Flink engine process the tweet dataset using event-time tumbling window and stateful attribution function, writing the result window output and contributor weight into DuckDB through Sink V2.
+
+Step 4:
+Frontend get the run data and window result using API call filter by the run ID.
+
+Step 5:
+The process data show on the table and chart on the 5 query.
