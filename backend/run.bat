@@ -4,6 +4,7 @@ rem One script for the things you do all day in this project.
 rem   run.bat            compile, then run the pipeline on the configured dataset
 rem   run.bat compile    compile only
 rem   run.bat serve      compile, then start the HTTP API (POST /runs); port from application.properties
+rem   run.bat tins       compile, then run the TIN prototype's main (com.fyp.model.TINs), no database
 rem   run.bat test       compile and run the unit and integration tests
 rem   run.bat clean      delete backend\target
 rem   run.bat reset      delete the development database and every stored upload (stop serve first)
@@ -31,6 +32,7 @@ echo maven: %MVNCMD%
 
 if "%~1"=="compile" goto :compile
 if "%~1"=="serve" goto :serve
+if "%~1"=="tins" goto :tins
 if "%~1"=="test" goto :test
 if "%~1"=="clean" goto :clean
 if "%~1"=="reset" goto :reset
@@ -45,6 +47,12 @@ rem ApiApplication, not AttributionJob: the same --add-opens flags the job needs
 rem reflection are already what exec:exec passes, so this route is the CLI route with a
 rem different main class. Ctrl-C stops it.
 call "%MVNCMD%" compile exec:exec "-DmainClass=com.fyp.ApiApplication"
+goto :eof
+
+:tins
+rem The prototype reads no config, no dataset and no database: it is the reference schema's four
+rem tables modelled in memory. This route exists so that editing the model has a one-command answer.
+call "%MVNCMD%" compile exec:exec "-DmainClass=com.fyp.model.TINs"
 goto :eof
 
 :job
