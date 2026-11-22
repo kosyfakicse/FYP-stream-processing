@@ -1,6 +1,7 @@
 package com.fyp.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.http.HttpStatus.NOT_FOUND;
 import static org.springframework.http.HttpStatus.OK;
 
 import java.io.IOException;
@@ -47,6 +48,9 @@ class EmptyDatabaseReadTest {
      * A read is not a reason to fail. Before {@code ApiApplication} applied the schema while building
      * the pipeline service, these two calls answered 500 with DuckDB's "Table with name runs does not
      * exist", because only the upload and the run paths ever created the tables.
+     *
+     * <p>The graph read is here for the same reason: it walks four tables, and the 404 depends on the
+     * {@code runs} lookup coming first.
      */
     @Test
     void listingDatasetsAndRunsOnAFreshDatabaseAnswersAnEmptyArray() throws IOException {
@@ -58,6 +62,8 @@ class EmptyDatabaseReadTest {
         assertThat(runs.size()).isZero();
         assertThat(datasets.isArray()).isTrue();
         assertThat(datasets.size()).isZero();
+
+        assertThat(get("/runs/run-20260101-0000-ffff/graph").getStatusCode()).isEqualTo(NOT_FOUND);
     }
 
     private ResponseEntity<String> get(String path) {
@@ -85,7 +91,7 @@ class EmptyDatabaseReadTest {
                     new DatasetConfig("tweet_hashtag", tempDir.resolve("uploads").toString(), 0,
                             new DatasetEntry("nothing uploaded yet", dataset.toString()), null, null),
                     new FlinkConfig(1),
-                    new PipelineConfig(1, 100, tempDir.resolve("attribution.duckdb").toString()));
+                    new PipelineConfig(1, 1, 1, 100, tempDir.resolve("attribution.duckdb").toString()));
         }
     }
 }

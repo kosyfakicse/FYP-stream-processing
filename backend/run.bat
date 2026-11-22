@@ -4,6 +4,7 @@ rem One script for the things you do all day in this project.
 rem   run.bat            compile, then run the pipeline on the configured dataset
 rem   run.bat compile    compile only
 rem   run.bat serve      compile, then start the HTTP API (POST /runs); port from application.properties
+rem   run.bat graph ID   print one stored run's four tin_* tables; starts no job and writes no rows
 rem   run.bat tins       compile, then run the TIN prototype's main (com.fyp.model.TINs), no database
 rem   run.bat test       compile and run the unit and integration tests
 rem   run.bat clean      delete backend\target
@@ -32,6 +33,7 @@ echo maven: %MVNCMD%
 
 if "%~1"=="compile" goto :compile
 if "%~1"=="serve" goto :serve
+if "%~1"=="graph" goto :graph
 if "%~1"=="tins" goto :tins
 if "%~1"=="test" goto :test
 if "%~1"=="clean" goto :clean
@@ -47,6 +49,30 @@ rem ApiApplication, not AttributionJob: the same --add-opens flags the job needs
 rem reflection are already what exec:exec passes, so this route is the CLI route with a
 rem different main class. Ctrl-C stops it.
 call "%MVNCMD%" compile exec:exec "-DmainClass=com.fyp.ApiApplication"
+goto :eof
+
+:graph
+rem Reads one stored run back out of ../data/attribution.duckdb and prints the four tin_* tables.
+rem The id arrives as a Maven property because exec:exec takes no program argument; see pom.xml.
+if "%~2"=="" goto :graph_usage
+set "PORT=8081"
+for /f "usebackq tokens=2 delims==" %%p in (`findstr /b "server.port=" "src\main\resources\application.properties" 2^>nul`) do set "PORT=%%p"
+netstat -ano | findstr /c:":%PORT% " | findstr /i /c:"LISTENING" >nul
+if not errorlevel 1 goto :graph_busy
+call "%MVNCMD%" compile exec:exec "-DmainClass=com.fyp.GraphReport" "-DrunId=%~2"
+goto :eof
+
+:graph_usage
+echo usage: run.bat graph ^<runId^>
+echo        the id is the first word a "run.bat" job printed, or one of GET /runs.
+goto :eof
+
+:graph_busy
+rem DuckDB allows one process per file and its own error names neither the server nor the lock, so this
+rem says it before Maven starts. The port check is the same idiom `reset` uses.
+echo A server is listening on port %PORT% and it holds the only open handle on the database.
+echo Either Ctrl-C that run.bat serve window and run this again, or read the same rows over HTTP:
+echo   curl.exe http://localhost:%PORT%/runs/%~2/graph
 goto :eof
 
 :tins

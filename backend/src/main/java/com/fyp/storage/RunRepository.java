@@ -16,8 +16,8 @@ import com.fyp.RunContext;
  * {@link #findAll} answer {@code GET /runs} with what happened, and {@link #findByRunId} rebuilds the
  * {@link RunContext} a job would have started from, config snapshot included.
  *
- * <p>{@code provenance_enabled} is written as false because this stage persists results only; the
- * TIN capture that would flip it is a later phase.
+ * <p>{@code provenance_enabled} is written as true because a run records the operators it used and the
+ * state each fired window left behind, which is what that flag has always meant.
  */
 public final class RunRepository {
 
@@ -46,7 +46,7 @@ public final class RunRepository {
 
     public void recordStart(RunContext run) {
         sql.update(INSERT_RUN, List.of(run.runId(), toTimestamp(run.startedAt()), run.dataset(),
-                run.configJson(), false));
+                run.configJson(), true));
     }
 
     public void recordFinish(String runId, Instant finishedAt) {

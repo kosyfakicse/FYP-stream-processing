@@ -1,5 +1,9 @@
 import requests
 
+"""
+run.bat serve -> start the backend application
+
+"""
 TIMEOUT = 30
 RUN_TIMEOUT = 120
 BASE_URL = "http://localhost:8000"
@@ -47,18 +51,30 @@ def get_run(run_id):
     return requests.get(f"{BASE_URL}/runs/{run_id}", timeout=TIMEOUT)
 
 
+def get_run_graph(run_id):
+    return requests.get(f"{BASE_URL}/runs/{run_id}/graph", timeout=TIMEOUT)
+
+
 
 def main():
     try:
-        #repsponse = post_dataset()
-        #response = get_dataset()
-        #response = get_runs()
-        #response = get_dataset()
-        #response = post_run("ds-20261116-1244-8173")
-        #response = get_runs()
-        response = get_run('run-20261116-1249-1f19')
-        print(response.status_code)   # parsed: dict / list
-        print(response.json())                           # raw string, exactly the bytes
+        response = post_dataset()
+        print(response.status_code)
+        dataset_id = response.json()["datasetId"]
+        print(dataset_id)
+
+        response = post_run(dataset_id)
+        print(response.status_code)
+        run_id = response.json()["runId"]
+        print(run_id)
+
+        response = get_run(run_id)
+        print(response.status_code)
+        print(response.json())
+
+        response = get_run_graph(run_id)
+        print(response.status_code)
+        print(response.json())
 
     except Exception as e:
         print(e)

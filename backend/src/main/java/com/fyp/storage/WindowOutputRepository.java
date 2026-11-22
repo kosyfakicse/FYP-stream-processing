@@ -13,13 +13,6 @@ import com.fyp.model.WindowOutput;
  */
 public final class WindowOutputRepository {
 
-    /**
-     * The window operator of this topology. The reference schema points this at a row of
-     * {@code tin_vertices}, which is not written until the provenance stage, so the value is a
-     * constant for now.
-     */
-    static final String WINDOW_VERTEX_ID = "W1";
-
     private static final String INSERT_OUTPUT =
             "INSERT INTO window_outputs (run_id, vertex_id, category, window_start, window_end,"
                     + " output_count, attribution_json) VALUES (?, ?, ?, ?, ?, ?, ?)";
@@ -36,11 +29,16 @@ public final class WindowOutputRepository {
         this.sql = sql;
     }
 
-    public int insertAll(String runId, List<WindowOutput> outputs) {
+    /**
+     * @param vertexId the window operator that fired these, which is a {@code tin_vertices} id of the
+     *        same run -- the sink is handed it rather than naming one, so the two cannot disagree
+     */
+    public int insertAll(String runId, String vertexId, List<WindowOutput> outputs) {
         if (outputs.isEmpty()) {
             return 0;
         }
-        return sql.insertBatch(INSERT_OUTPUT, outputs.stream().map(output -> params(runId, output)).toList());
+        return sql.insertBatch(INSERT_OUTPUT,
+                outputs.stream().map(output -> params(runId, vertexId, output)).toList());
     }
 
     public List<WindowOutput> findByRunId(String runId) {
@@ -54,8 +52,8 @@ public final class WindowOutputRepository {
     }
 
     /** Column order of {@link #INSERT_OUTPUT}, kept in one place so writes and tests agree. */
-    static List<Object> params(String runId, WindowOutput output) {
-        return List.of(runId, WINDOW_VERTEX_ID, output.category(), output.windowStart(),
+    static List<Object> params(String runId, String vertexId, WindowOutput output) {
+        return List.of(runId, vertexId, output.category(), output.windowStart(),
                 output.windowEnd(), Math.toIntExact(output.outputCount()),
                 output.attribution().toJson());
     }
