@@ -15,9 +15,16 @@ the results back, so nothing has to open the database file to show a run. See `b
 the endpoint contract and `backend/README.md` for the reasoning behind it.
 
 That is the how-much half, and only the half. **The backward-attribution traversal is not implemented.**
-`window_outputs.vertex_id` is the constant `W1`, because there is no TIN vertex for
-`WindowOutputRepository` to point at, and the four `tin_*` tables that `schema.sql` creates at startup
-are created but never written to. Kafka replay and the dashboard are still planned too.
+A run does now describe itself as a network: `AttributionService` writes the four vertices it builds
+(`K1` source, `M1` map, `W1` window, `S1` sink) into `tin_vertices` and links them in `tin_edges`, and the
+counts are taken where the data actually is -- `BoxRecorder` reports what `K1` and what `M1` hold,
+`InteractionRecorder` what `M1 -> W1` carried, the sink what it is handed -- all of it landing in `tin_states`
+and `tin_interactions` beside the `window_outputs` rows through the one writer.
+`window_outputs.vertex_id` is the same minted `W1`. `GET /runs/{runId}/graph` now hands those four tables
+back as one `{vertices, edges, states, interactions}` body, so a client can draw the network without a
+database driver. What is still missing is using it: no code walks the edges backwards to answer a
+Where-From query, and there is no dashboard. Kafka replay is planned too. See *Provenance Capture* in
+`backend/README.md` for what a run writes and why a row covers an interval rather than one element.
 
 ### Core Question
 > "Which tweets/users caused this hashtag to trend?"
@@ -29,11 +36,10 @@ current behaviour.
 ### Architecture
 
 ```
-csv dataset -> Flink (windows + attribution) -> DuckDB (window_outputs) -> HTTP API -> client
+csv dataset -> Flink (windows + attribution) -> DuckDB (window_outputs + tin_*) -> HTTP API -> client
                     ^                                    ^
-             planned: Kafka replay        tin_* tables exist and stay empty: the backward
-                                          attribution that fills them is not built yet,
-                                          and neither is the dashboard
+             planned: Kafka replay        the graph is read, not traversed: /graph returns
+                                          the four tables; no backward query, no dashboard
 ```
 
 ## Project Structure
@@ -49,12 +55,12 @@ FYP-stream-processing/
 |-- .vscode/                            # launch.json, tasks.json, settings.json for Java + Python
 |-- backend/                            # the whole system: Java, Flink, DuckDB, Spring Boot
 |   |-- pom.xml                         # Java dependencies and versions
-|   |-- run.bat                         # compile | serve | test | clean | reset
+|   |-- run.bat                         # compile | serve | graph ID | tins | test | clean | reset
 |   |-- README.md                       # why it is built this way, version coupling, gotchas
 |   |-- docs/API.md                     # the HTTP contract clients code against
 |   |-- src/main/java/com/fyp/          # api/ service/ pipeline/ storage/ config/ model/
 |   |-- src/main/resources/             # config.yaml, application.properties, schema.sql
-|   +-- src/test/java/com/fyp/          # 108 tests
+|   +-- src/test/java/com/fyp/          # 138 tests
 |-- data/                               # a clone holds exactly one file, data/uploads/.gitkeep: every
 |                                       # csv, parquet, the duckdb file and cleared-* archives are ignored
 |-- docker/                             # Kafka + Kafka UI for the replay step (not wired yet)
@@ -87,11 +93,11 @@ cd FYP-stream-processing
 backend\run.bat test
 ```
 
-That is the whole check: it compiles and runs 108 tests, and needs no database, no dataset, no Kafka and
+That is the whole check: it compiles and runs 138 tests, and needs no database, no dataset, no Kafka and
 no cluster -- every test builds its own storage under a temporary directory. Expected tail of the output:
 
 ```
-[INFO] Tests run: 108, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 138, Failures: 0, Errors: 0, Skipped: 0
 [INFO] BUILD SUCCESS
 ```
 
@@ -146,7 +152,7 @@ That is what the client sends, and what a hand-written file has to look like: he
 backend\run.bat serve
 ```
 
-The port is `server.port` in `backend/src/main/resources/application.properties` (8000 today). The four
+The port is `server.port` in `backend/src/main/resources/application.properties` (8000 today). The five
 calls below are the whole route, and each id is whatever the call before it printed, so substitute it
 rather than copying the placeholder:
 
@@ -155,10 +161,13 @@ curl -X POST -H "Content-Type: text/csv" --data-binary @data\raw\tweet_hashtag.c
 curl http://localhost:8000/datasets
 curl -X POST -H "Content-Type: application/json" -d "{\"datasetId\":\"ds-...\"}" http://localhost:8000/runs
 curl http://localhost:8000/runs/run-...
+curl http://localhost:8000/runs/run-.../graph
 ```
 
 This route wants a csv on disk to upload, so it needs **Supply a dataset** above; the Python client does
-not, because it builds its own bytes in memory. An unsorted file is refused at upload by `DatasetScan`,
+not, because it builds its own bytes in memory. `python frontend\test.py` is those five calls in one go,
+over its own five-tweet fixture, printing the windows and then the graph of the run it just made -- so it
+needs a listening server and nothing else. An unsorted file is refused at upload by `DatasetScan`,
 before anything is stored: the windows are event-time with a monotonic watermark, so unsorted rows would
 answer 200 and silently drop every event that looks late rather than failing the run. Request and
 response bodies are in `backend/docs/API.md`.
@@ -172,6 +181,18 @@ backend\run.bat
 Uses `dataset.target_dataset` from `backend/src/main/resources/config.yaml` and writes the same tables.
 This is the route that needs the csv from **Supply a dataset** above; with no file at that path it fails
 at startup.
+
+### Read one stored run's provenance back
+
+```cmd
+backend\run.bat graph run-20261122-1725-2282
+```
+
+The job above prints only `window_outputs`; this prints what the provenance capture stored beside them --
+`tin_vertices`, `tin_edges`, `tin_states` and `tin_interactions` -- from the database, starting no job and
+writing no rows. It is the same four tables `GET /runs/{runId}/graph` returns, for anyone with no HTTP
+server up. Paste any id from a previous run, or a wrong one to get the list this database holds. Real
+output, with the columns explained, is in `backend/README.md`.
 
 ### Exercise the API from Python
 

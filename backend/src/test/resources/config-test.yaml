@@ -17,6 +17,8 @@ flink:
 
 pipeline:
   window_size_seconds: 15
+  state_tick_seconds: 5
+  interaction_tick_seconds: 3
   batch_size: 7
   duckdb_file: "data/test.duckdb"
 

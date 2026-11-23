@@ -44,6 +44,26 @@ class CategoryAttributionFunctionTest {
         assertThat(output.attribution().quantityOf("user_1")).isEqualTo(10L);
     }
 
+    /**
+     * The window counts events and deduplicates nothing, because the id it would deduplicate on names an
+     * (operator, instant, tag) triple rather than a tweet. Two identical ids are two observations of one
+     * hashtag, which is the truth; the tweet total is measured upstream by {@code BoxRecorder} now, on the
+     * stream that still carries whole tweets -- see {@code AttributionWindowJobTest}.
+     */
+    @Test
+    void countsEveryEventItIsGivenWithoutCollapsingRepeats() {
+        List<UnifiedEvent> events = List.of(
+                UnifiedEvent.of("user_1", "PYTHON", 1_000L),
+                UnifiedEvent.of("user_1", "PYTHON", 1_000L),
+                UnifiedEvent.of("user_2", "PYTHON", 1_200L));
+
+        WindowOutput output = CategoryAttributionFunction.aggregate("PYTHON", 1_000L, 2_000L, events);
+
+        assertThat(output.outputCount()).isEqualTo(3);
+        assertThat(output.attribution().quantityOf("user_1")).isEqualTo(2L);
+        assertThat(output.attribution().total()).isEqualTo(3);
+    }
+
     @Test
     void anEmptyWindowStillReportsZeroSources() {
         WindowOutput output = CategoryAttributionFunction.aggregate("PYTHON", 1_000L, 2_000L, List.of());

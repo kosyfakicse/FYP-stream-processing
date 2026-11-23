@@ -60,6 +60,21 @@ class AttributionWindowJobTest {
         assertThat(only(outputs, "PYTHON", 3_000L).attribution().quantityOf("user_5")).isEqualTo(1L);
     }
 
+    /**
+     * Two tweets naming a tag three times fire one window whose count is 3, and nothing inside the window
+     * can say how many tweets that was. The firing no longer tries: the tweet total is measured upstream by
+     * {@code BoxRecorder}, on the stream that still carries whole tweets, which is why {@code K1 -> M1} and
+     * {@code M1 -> W1} are allowed to disagree -- see {@code AttributionPipelineEndToEndTest}.
+     */
+    @Test
+    void countsThreeEventsForTwoTweetsWithoutKnowingTheyWereTwo() throws Exception {
+        List<WindowOutput> outputs = run(List.of(
+                new Tweet("user_1", "#python and again #python", 1_000L),
+                new Tweet("user_2", "#python", 1_200L)), 1);
+
+        assertThat(only(outputs, "PYTHON", 1_000L).outputCount()).isEqualTo(3);
+    }
+
     private static WindowOutput only(List<WindowOutput> outputs, String category, long windowStart) {
         List<WindowOutput> matches = outputs.stream()
                 .filter(output -> output.category().equals(category))
@@ -75,10 +90,10 @@ class AttributionWindowJobTest {
 
         DataStream<WindowOutput> outputs = env
                 .fromData(tweets)
-                .flatMap(new HashtagExtractor())
                 .assignTimestampsAndWatermarks(WatermarkStrategy
-                        .<UnifiedEvent>forBoundedOutOfOrderness(Duration.ZERO)
-                        .withTimestampAssigner(new EventTimestampAssigner()))
+                        .<Tweet>forBoundedOutOfOrderness(Duration.ZERO)
+                        .withTimestampAssigner(new TweetTimestampAssigner()))
+                .flatMap(new HashtagExtractor())
                 .keyBy((KeySelector<UnifiedEvent, String>) UnifiedEvent::category)
                 .window(TumblingEventTimeWindows.of(Duration.ofSeconds(windowSizeSeconds)))
                 .process(new CategoryAttributionFunction());

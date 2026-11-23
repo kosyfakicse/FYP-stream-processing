@@ -29,7 +29,11 @@ public final class ConfigLoader {
             if (in == null) {
                 throw new IllegalStateException("Config resource not found on classpath: " + resource);
             }
-            return yamlMapper().readValue(in, AppConfig.class);
+            AppConfig config = yamlMapper().readValue(in, AppConfig.class);
+            // Here rather than in the job so both routes refuse a bad pair of ticks the same way: this
+            // is the only config reader the API bean and AttributionJob.main share.
+            config.pipeline().validateTicks();
+            return config;
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to read config resource: " + resource, e);
         }

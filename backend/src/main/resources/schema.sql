@@ -1,17 +1,30 @@
--- DuckDB schema, transcribed from docs/design/reference_schema.md.
+-- DuckDB schema, transcribed from the TIN reference schema and adjusted for this job.
 --
--- The four tin_* tables are documented and created here, but no Java code reads or writes them at
--- this stage: provenance capture is a later phase. They exist so the database and the reference
--- schema stay in step.
+-- All four tin_* tables are written by a run: the job records the operators it built, what each vertex's
+-- box held per interval, and how much each edge carried per interval. A row is per interval rather than per
+-- element, so one row summarizes a whole tick: K1 -> M1 counts tweets, M1 -> W1 counts hashtag events and
+-- W1 -> S1 counts the results the window handed the sink.
 --
--- Two deliberate deviations from the reference document, both in window_outputs:
---   1. output_id draws from a sequence. The document declares a plain INTEGER PRIMARY KEY, which
---      DuckDB does not fill in for an omitted column, and a second run starting again at 1 would
---      collide with the first. (DuckDB 2.0 accepts neither SERIAL nor GENERATED AS IDENTITY here,
---      so the sequence is named and referenced explicitly.)
---   2. category holds the hashtag the window was keyed by. The document predates hashtag keying
---      (see commit "new window output, keyby hashtag instead of user id") and has no column for it,
---      so without this the results of two hashtags in the same window are indistinguishable.
+-- Deliberate deviations from the reference document, each one a place the document predates this job:
+--   1. Every surrogate id draws from a sequence. The document declares plain INTEGER PRIMARY KEY,
+--      which DuckDB does not fill in for an omitted column. (DuckDB 2.0 accepts neither SERIAL nor
+--      GENERATED AS IDENTITY here, so the sequences are named and referenced explicitly.)
+--   2. category holds the hashtag the window was keyed by. The document has no column for it, so
+--      without it the results of two hashtags in one window are indistinguishable -- on
+--      window_outputs, tin_states and tin_interactions alike, since W1 is one vertex but fires one
+--      state and one interaction per (window, category).
+--   3. tin_vertices is keyed by (run_id, vertex_id), not vertex_id. Ids are minted per run by
+--      counting operator types, so every run calls its window operator W1 and a global key would make
+--      the second run fail to insert it.
+--   4. Natural unique keys on the tables a run writes. The JDBC sink is at-least-once, so a retry must
+--      collide with something rather than land as an extra row.
+--   5. tin_states.category and tin_interactions.category are nullable, because a K1 or M1 row is about
+--      tweets rather than one hashtag and no hashtag is the truth there. (window_outputs keeps its
+--      NOT NULL: every row of that table is one hashtag's result.) MEASURED COST, accepted knowingly:
+--      DuckDB treats two NULL categories as distinct, so the unique key above does NOT reject a retried
+--      tag-blind row -- ProvenanceRepositoryTest names this in code. UNIQUE NULLS NOT DISTINCT is the
+--      fix and duckdb_jdbc 2.0.0.1 rejects that syntax at parse time, so the guard covers the
+--      category-bearing rows only.
 
 CREATE TABLE IF NOT EXISTS runs (
     run_id VARCHAR PRIMARY KEY,
@@ -37,10 +50,11 @@ CREATE TABLE IF NOT EXISTS datasets (
 );
 
 CREATE TABLE IF NOT EXISTS tin_vertices (
-    vertex_id VARCHAR PRIMARY KEY,
+    vertex_id VARCHAR NOT NULL,
     run_id VARCHAR NOT NULL,
     vertex_type VARCHAR NOT NULL,
-    description VARCHAR
+    description VARCHAR,
+    PRIMARY KEY (run_id, vertex_id)
 );
 
 CREATE TABLE IF NOT EXISTS tin_edges (
@@ -50,25 +64,33 @@ CREATE TABLE IF NOT EXISTS tin_edges (
     PRIMARY KEY (source_vertex, target_vertex, run_id)
 );
 
+CREATE SEQUENCE IF NOT EXISTS tin_interactions_interaction_id_seq START 1;
+
 CREATE TABLE IF NOT EXISTS tin_interactions (
-    interaction_id INTEGER PRIMARY KEY,
+    interaction_id INTEGER PRIMARY KEY DEFAULT nextval('tin_interactions_interaction_id_seq'),
     run_id VARCHAR NOT NULL,
     source_vertex VARCHAR NOT NULL,
     target_vertex VARCHAR NOT NULL,
+    category VARCHAR,
     timestamp BIGINT NOT NULL,
     quantity INTEGER NOT NULL,
-    attribution_json VARCHAR NOT NULL
+    attribution_json VARCHAR NOT NULL,
+    UNIQUE (run_id, source_vertex, target_vertex, category, timestamp)
 );
 
+CREATE SEQUENCE IF NOT EXISTS tin_states_state_id_seq START 1;
+
 CREATE TABLE IF NOT EXISTS tin_states (
-    state_id INTEGER PRIMARY KEY,
+    state_id INTEGER PRIMARY KEY DEFAULT nextval('tin_states_state_id_seq'),
     run_id VARCHAR NOT NULL,
     vertex_id VARCHAR NOT NULL,
+    category VARCHAR,
     time_start BIGINT NOT NULL,
-    time_end BIGINT,
+    time_end BIGINT NOT NULL,
     quantity INTEGER NOT NULL,
     attribution_json VARCHAR NOT NULL,
-    fired_at BIGINT
+    fired_at BIGINT,
+    UNIQUE (run_id, vertex_id, category, time_start, time_end)
 );
 
 CREATE SEQUENCE IF NOT EXISTS window_outputs_output_id_seq START 1;

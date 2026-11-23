@@ -41,11 +41,11 @@ class StorageRoundTripTest {
             WindowOutputRepository outputs = new WindowOutputRepository(executor);
 
             runs.recordStart(new RunContext("run-a", STARTED, "tweet_hashtag", "{\"a\":1}"));
-            int written = outputs.insertAll("run-a", List.of(PYTHON, JAVA));
+            int written = outputs.insertAll("run-a", "W1", List.of(PYTHON, JAVA));
             runs.recordFinish("run-a", STARTED.plusSeconds(20));
 
             runs.recordStart(new RunContext("run-b", STARTED.plusSeconds(60), "tweet_hashtag", "{\"b\":2}"));
-            outputs.insertAll("run-b", List.of(PYTHON));
+            outputs.insertAll("run-b", "W1", List.of(PYTHON));
 
             assertThat(written).isEqualTo(2);
             assertThat(outputs.findByRunId("run-a")).containsExactly(JAVA, PYTHON);
@@ -93,7 +93,7 @@ class StorageRoundTripTest {
             SchemaInitializer.applyTo(executor);
             SchemaInitializer.applyTo(executor);
 
-            new WindowOutputRepository(executor).insertAll("run-a", List.of(PYTHON));
+            new WindowOutputRepository(executor).insertAll("run-a", "W1", List.of(PYTHON));
 
             assertThat(executor.query("SELECT COUNT(*) FROM window_outputs", List.of()).get(0).getLong(0))
                     .isEqualTo(1);
