@@ -29,7 +29,7 @@ class RunRepositoryTest {
         assertThat(call.sql()).isEqualTo("INSERT INTO runs (run_id, started_at, dataset, config_json,"
                 + " provenance_enabled) VALUES (?, ?, ?, ?, ?)");
         assertThat(call.args()).isEqualTo(List.of("run-20261114-1020-a7f3",
-                RunRepository.toTimestamp(STARTED), "tweet_hashtag", "{\"pipeline\":{}}", false));
+                RunRepository.toTimestamp(STARTED), "tweet_hashtag", "{\"pipeline\":{}}", true));
     }
 
     @Test

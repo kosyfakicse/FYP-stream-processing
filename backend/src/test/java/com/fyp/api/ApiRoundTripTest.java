@@ -108,6 +108,38 @@ class ApiRoundTripTest {
         assertThat(pythonAttribution.path("user_1").asLong()).isEqualTo(1);
         assertThat(pythonAttribution.path("user_2").asLong()).isEqualTo(1);
 
+        JsonNode graph = new ObjectMapper().readTree(get("/runs/" + runId + "/graph").getBody());
+        assertThat(graph.path("vertices").findValuesAsText("vertexId"))
+                .containsExactly("K1", "M1", "S1", "W1");
+        assertThat(graph.path("edges").size()).isEqualTo(3);
+        assertThat(graph.path("states").size()).isEqualTo(4);
+        assertThat(graph.path("interactions").size()).isEqualTo(5);
+
+        // The read orders by (time_start, vertex_id, category) and this run is one interval long, so the
+        // two boxes arrive before the windows, with no category because neither operator picked one.
+        assertThat(graph.path("states").findValuesAsText("vertexId"))
+                .containsExactly("K1", "M1", "W1", "W1");
+        assertThat(graph.path("states").get(0).path("category").isNull()).isTrue();
+        assertThat(graph.path("states").get(0).path("quantity").asLong()).isEqualTo(3);
+        assertThat(graph.path("states").get(0).path("attribution").isEmpty()).isTrue();
+        assertThat(graph.path("states").findValues("category").stream()
+                .filter(node -> !node.isNull())
+                .map(JsonNode::asText))
+                .containsExactly("JAVA", "PYTHON");
+
+        JsonNode javaState = graph.path("states").get(2);
+        assertThat(javaState.path("vertexId").asText()).isEqualTo("W1");
+        assertThat(javaState.path("timeEnd").asLong() - javaState.path("timeStart").asLong())
+                .isEqualTo(1_000L);
+        assertThat(javaState.path("firedAt").asLong()).isEqualTo(2_000L);
+        assertThat(javaState.path("attribution").path("user_3").asLong()).isEqualTo(1);
+
+        JsonNode firstInteraction = graph.path("interactions").get(0);
+        assertThat(firstInteraction.path("sourceVertex").asText()).isEqualTo("K1");
+        assertThat(firstInteraction.path("targetVertex").asText()).isEqualTo("M1");
+        assertThat(firstInteraction.path("category").isNull()).isTrue();
+        assertThat(firstInteraction.path("quantity").asLong()).isEqualTo(3);
+
         JsonNode listed = new ObjectMapper().readTree(get("/runs").getBody());
         assertThat(listed.findValuesAsText("runId")).contains(runId);
     }
@@ -245,7 +277,7 @@ class ApiRoundTripTest {
                     new DatasetConfig("tweet_hashtag", uploadDir().toString(), 0,
                             new DatasetEntry("api test data", dataset.toString()), null, null),
                     new FlinkConfig(1),
-                    new PipelineConfig(1, 100, db.toString()));
+                    new PipelineConfig(1, 1, 1, 100, db.toString()));
         }
     }
 }

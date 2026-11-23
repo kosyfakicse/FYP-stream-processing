@@ -4,333 +4,235 @@ Demonstration and Evaluation of How-Much Provenance in Streaming Dataflows
 
 ## Overview
 
-This project implements a streaming system that demonstrates **how-much provenance** using **temporal attribution** (TIN-based), focusing on **backward attribution** (Where-From queries).
+A streaming system built to demonstrate **how-much provenance** through **temporal attribution**
+(TIN-based), the paper's design being **backward attribution** (Where-From queries). What it
+actually demonstrates today is narrower, and the gap is spelled out below rather than glossed.
+
+What exists today is the pipeline and the API around it: a Flink job that reads a tweet csv, extracts
+hashtags, attributes every hashtag over event-time tumbling windows, and stores each firing window with
+the per-user counts that produced it. A Spring Boot HTTP API runs the job on a stored dataset and reads
+the results back, so nothing has to open the database file to show a run. See `backend/docs/API.md` for
+the endpoint contract and `backend/README.md` for the reasoning behind it.
+
+That is the how-much half, and only the half. **The backward-attribution traversal is not implemented.**
+A run does now describe itself as a network: `AttributionService` writes the four vertices it builds
+(`K1` source, `M1` map, `W1` window, `S1` sink) into `tin_vertices` and links them in `tin_edges`, and the
+counts are taken where the data actually is -- `BoxRecorder` reports what `K1` and what `M1` hold,
+`InteractionRecorder` what `M1 -> W1` carried, the sink what it is handed -- all of it landing in `tin_states`
+and `tin_interactions` beside the `window_outputs` rows through the one writer.
+`window_outputs.vertex_id` is the same minted `W1`. `GET /runs/{runId}/graph` now hands those four tables
+back as one `{vertices, edges, states, interactions}` body, so a client can draw the network without a
+database driver. What is still missing is using it: no code walks the edges backwards to answer a
+Where-From query, and there is no dashboard. Kafka replay is planned too. See *Provenance Capture* in
+`backend/README.md` for what a run writes and why a row covers an interval rather than one element.
 
 ### Core Question
 > "Which tweets/users caused this hashtag to trend?"
 
+What the system answers today is the counts behind that question -- who contributed how much to one
+firing window. The Where-From traversal over a temporal interaction network is the target, not the
+current behaviour.
+
 ### Architecture
-```
-Dataset (CSV/Parquet) → Kafka (replay) → Flink (process + attribution) → DuckDB (TIN store) → Streamlit (dashboard)
-```
-
-## Current Project Structure
 
 ```
-FYP-stream-processing/
-|
-|-- README.md                           # Project overview + setup
-|-- pyproject.toml                      # Package configuration
-|-- .gitignore                          # Git ignore rules
-|-- .env                                # Local environment (gitignored)
-|-- .env.example                        # Environment template
-|-- Makefile                            # Common commands
-|
-|-- configs/                            # Configuration files
-|   +-- README.md
-|
-|-- data/                               # Datasets and database
-|   |-- README.md
-|   |-- raw/                            # Original datasets
-|   +-- processed/                      # Cleaned/transformed data
-|
-|-- src/                                # Source code
-|   |-- README.md
-|   +-- fyp_attribution/                # Main package
-|       |-- __init__.py
-|       |-- __version__.py
-|       |-- logging_config.py           # Loguru logging configuration
-|       |-- core/                       # Core business logic
-|       |   |-- README.md
-|       |   +-- __init__.py
-|       |-- pipeline/                   # Data pipeline components
-|       |   +-- README.md
-|       |-- storage/                    # Data storage layer
-|       |   +-- README.md
-|       +-- dashboard/                  # Streamlit UI
-|           |-- README.md
-|           |-- __init__.py
-|           |-- pages/                  # Dashboard pages
-|           +-- components/             # UI components
-|
-|-- tests/                              # Test suite
-|   |-- README.md
-|   |-- __init__.py
-|   |-- conftest.py                     # Shared fixtures
-|   |-- unit/                           # Unit tests
-|   |   |-- README.md
-|   |   +-- __init__.py
-|   |-- integration/                    # Integration tests
-|   |   +-- README.md
-|   +-- e2e/                            # End-to-end tests
-|       +-- README.md
-|
-|-- scripts/                            # Utility scripts
-|   +-- README.md
-|
-|-- docs/                               # Documentation
-|   +-- README.md
-|
-+-- related-work/                       # Reference papers
-    |-- temporal-attribution.pdf
-    |-- flink-deb.pdf
-    +-- s00778-023-00819-8.pdf
+csv dataset -> Flink (windows + attribution) -> DuckDB (window_outputs + tin_*) -> HTTP API -> client
+                    ^                                    ^
+             planned: Kafka replay        the graph is read, not traversed: /graph returns
+                                          the four tables; no backward query, no dashboard
 ```
 
-## Logging
-
-This project uses [loguru](https://github.com/Delgan/loguru) for logging. Loguru provides a simpler and more powerful logging experience than the standard library logging module.
-
-### Usage
-
-```python
-from fyp_attribution.logging_config import setup_logging, get_logger
-
-# Configure logging
-setup_logging(log_level="INFO", log_file="logs/app.log")
-
-# Get a logger
-logger = get_logger(__name__)
-
-# Log messages
-logger.info("This is an info message")
-logger.debug("This is a debug message")
-logger.warning("This is a warning")
-logger.error("This is an error")
-```
-
-### Features
-
-- Console logging with colors
-- File logging with rotation (10 MB)
-- Retention policy (10 days)
-- Compression of old logs (zip)
-- Structured logging with module, function, and line information
-
-## Complete Project Structure (Final State)
+## Project Structure
 
 ```
 FYP-stream-processing/
 |
-|-- README.md                           # Project overview + setup
-|-- CODING_STYLE.md                     # Coding conventions + Python version
-|-- pyproject.toml                      # Package configuration
-|-- requirements.txt                    # Dependencies
-|-- .python-version                     # Python 3.10.13
-|-- .gitignore                          # Git ignore rules
-|-- .env.example                        # Environment template
-|-- .env                                # Local environment (gitignored)
-|-- Makefile                            # Common commands
-|
-|-- PLAN.md                             # Master plan overview
-|-- IMPLEMENTATION_PLAN.md              # Technical details
-|-- WORK_DISTRIBUTION.md                # 2-student work split
-|-- GANTT_CHART.md                      # 16-week timeline
-|-- SCHEMA.md                           # Schema reference
-|
-|-- configs/                            # Configuration files
-|   |-- README.md
-|   +-- config.yaml                     # Main configuration
-|
-|-- data/                               # Datasets and database
-|   |-- README.md
-|   |-- raw/
-|   |   +-- tweet_hashtag.csv           # Test data (30 sample tweets)
-|   |-- processed/                      # Cleaned/transformed data
-|   +-- attribution.duckdb              # DuckDB database (generated at runtime)
-|
-|-- src/                                # Source code
-|   |-- README.md
-|   +-- fyp_attribution/                # Main package
-|       |-- __init__.py
-|       |-- __version__.py
-|       |
-|       |-- core/                       # Core business logic
-|       |   |-- README.md
-|       |   |-- __init__.py
-|       |   |-- models.py               # Pydantic models (Attribution, TIN, etc.)
-|       |   |-- attribution.py          # AttributionTracker implementation
-|       |   +-- tin.py                  # TIN operations
-|       |
-|       |-- pipeline/                   # Data pipeline components
-|       |   |-- README.md
-|       |   |-- __init__.py
-|       |   |-- kafka_consumer.py       # Kafka message consumer
-|       |   |-- flink_processor.py      # Apache Flink stream processing
-|       |   +-- duckdb_writer.py        # DuckDB database writer
-|       |
-|       |-- storage/                    # Data storage layer
-|       |   |-- README.md
-|       |   |-- __init__.py
-|       |   |-- tin_store.py            # TIN persistence layer
-|       |   +-- query_engine.py         # Backward attribution queries (BFS)
-|       |
-|       |-- dashboard/                  # Streamlit UI
-|       |   |-- README.md
-|       |   |-- __init__.py
-|       |   |-- app.py                  # Main Streamlit application
-|       |   |-- pages/
-|       |   |   |-- overview.py         # Overview page
-|       |   |   +-- backward_attribution.py  # Query interface
-|       |   +-- components/
-|       |       +-- charts.py           # Reusable chart components
-|       |
-|       |-- config.py                   # Configuration management
-|       |-- utils.py                    # Helper functions
-|       +-- logging_config.py           # Loguru logging configuration
-|
-|-- tests/                              # Test suite
-|   |-- README.md
-|   |-- __init__.py
-|   |-- conftest.py                     # Shared fixtures
-|   |
-|   |-- unit/                           # Unit tests
-|   |   |-- README.md
-|   |   |-- __init__.py
-|   |   |-- test_models.py              # Pydantic model validation
-|   |   |-- test_attribution.py         # AttributionTracker logic
-|   |   |-- test_tin_store.py           # TIN storage operations
-|   |   |-- test_config.py              # Configuration loading
-|   |   +-- test_dataset_loader.py      # Dataset loading
-|   |
-|   |-- integration/                    # Integration tests
-|   |   |-- README.md
-|   |   |-- __init__.py
-|   |   |-- test_kafka_flink.py         # Kafka -> Flink pipeline
-|   |   |-- test_flink_duckdb.py        # Flink -> DuckDB pipeline
-|   |   +-- test_duckdb_query.py        # DuckDB query operations
-|   |
-|   +-- e2e/                            # End-to-end tests
-|       |-- README.md
-|       |-- __init__.py
-|       |-- test_workflow.py            # Full pipeline workflow
-|       |-- test_known_answer.py        # Known-answer test validation
-|       |-- test_correctness.py         # All 8 correctness tests
-|       +-- test_performance.py         # Performance benchmarks
-|
-|-- scripts/                            # Utility scripts
-|   |-- README.md
-|   |
-|   |-- data/                           # Data utilities
-|   |   |-- generate_tweet_data.py      # Generate sample tweet data
-|   |   |-- download_nyc_taxi.py        # Download NYC Taxi dataset
-|   |   +-- load_to_kafka.py            # Load data into Kafka
-|   |
-|   |-- pipeline/                       # Pipeline utilities
-|   |   |-- run_pipeline.py             # Run complete pipeline
-|   |   |-- run_flink_job.py            # Submit Flink job
-|   |   +-- reset_pipeline.py           # Reset pipeline state
-|   |
-|   |-- experiments/                    # Experiment utilities
-|   |   |-- run_experiment.py           # Run experiment configurations
-|   |   |-- compare_provenance.py       # Compare with/without provenance
-|   |   +-- collect_metrics.py          # Collect performance metrics
-|   |
-|   +-- utils/                          # General utilities
-|       |-- verify_schema.py            # Verify schema correctness
-|       +-- export_results.py           # Export results for analysis
-|
-|-- docs/                               # Documentation
-|   |-- README.md
-|   |-- architecture.md                 # System architecture
-|   |-- schema.md                       # Schema reference
-|   |-- api.md                          # API documentation
-|   |-- dashboard.md                    # Dashboard user guide
-|   |-- deployment.md                   # Deployment guide
-|   |
-|   |-- design/                         # Design documents
-|   |   |-- tin_model.md                # TIN model design
-|   |   |-- attribution_logic.md        # Attribution propagation logic
-|   |   +-- query_algorithms.md         # Query algorithm design
-|   |
-|   +-- reports/                        # Progress reports
-|       |-- week_4_report.md            # Baseline complete
-|       |-- week_8_report.md            # First demo
-|       +-- final_report.md             # FYP report draft
-|
-+-- related-work/                       # Reference papers
-    |-- temporal-attribution.pdf
-    |-- flink-deb.pdf
-    +-- s00778-023-00819-8.pdf
+|-- README.md                           # this file
+|-- Makefile                            # forwards to backend\run.bat; see the note at its top
+|-- requirements.txt                    # Python deps: requests, for the API client only
+|-- .gitignore
+|-- .env.example                        # stale: Python-era keys (Streamlit, Kafka), nothing reads them
+|-- .vscode/                            # launch.json, tasks.json, settings.json for Java + Python
+|-- backend/                            # the whole system: Java, Flink, DuckDB, Spring Boot
+|   |-- pom.xml                         # Java dependencies and versions
+|   |-- run.bat                         # compile | serve | graph ID | tins | test | clean | reset
+|   |-- README.md                       # why it is built this way, version coupling, gotchas
+|   |-- docs/API.md                     # the HTTP contract clients code against
+|   |-- src/main/java/com/fyp/          # api/ service/ pipeline/ storage/ config/ model/
+|   |-- src/main/resources/             # config.yaml, application.properties, schema.sql
+|   +-- src/test/java/com/fyp/          # 138 tests
+|-- data/                               # a clone holds exactly one file, data/uploads/.gitkeep: every
+|                                       # csv, parquet, the duckdb file and cleared-* archives are ignored
+|-- docker/                             # Kafka + Kafka UI for the replay step (not wired yet)
+|-- frontend/
+|   +-- test.py                         # Python API client and smoke test
+|-- scripts/data/
+|   +-- generate_tweet_data.py          # makes the csv the pipeline reads; stdlib only
++-- related-work/                       # reference papers
 ```
 
 ## Setup
 
 ### Prerequisites
-- Python 3.10.13 (enforced by `.python-version`)
-- Kafka
-- Apache Flink
-- DuckDB
+- **JDK 17** at `C:\Program Files\Eclipse Adoptium\jdk-17.0.21.9-hotspot` (the path `run.bat` sets;
+  edit line 23 there if yours differs). Boot 4.1.2 runs on 17, and Flink 2.2.1 needs the `--add-opens`
+  flags `run.bat` already passes.
+- **Maven** -- you do not need it on `PATH`. `run.bat` finds the wrapper distribution under
+  `%USERPROFILE%\.m2\wrapper\dists\apache-maven-3.9.9\` and downloads the jars from Maven Central on
+  first build (about 85 jars, 171 MB, into `%USERPROFILE%\.m2\repository`).
+- **Python 3.10** only if you want to run the API client, and only for `requests`. The repository does
+  not carry the environment: `uv venv --python 3.10 .venv` (or `py -3.10 -m venv .venv`), then
+  `pip install -r requirements.txt`. The `.venv` this was developed against is 3.10.22.
+- **Docker** only for the Kafka stack, which nothing reads from yet.
 
 ### Installation
 
-1. Clone the repository:
-```bash
-git clone <repository-url>
+```cmd
+git clone https://github.com/kosyfakicse/FYP-stream-processing.git
 cd FYP-stream-processing
+backend\run.bat test
 ```
 
-2. Install dependencies:
-```bash
-make install-dev
+That is the whole check: it compiles and runs 138 tests, and needs no database, no dataset, no Kafka and
+no cluster -- every test builds its own storage under a temporary directory. Expected tail of the output:
+
+```
+[INFO] Tests run: 138, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
 ```
 
-3. Copy environment configuration:
-```bash
-cp .env.example .env
+### Supply a dataset
+
+A clone contains no csv: `data\raw\*.csv` is gitignored, so nothing on disk matches
+`dataset.tweet_hashtag.file` in `backend/src/main/resources/config.yaml`. Generate one:
+
+```cmd
+python scripts/data/generate_tweet_data.py --dry-run
+python scripts/data/generate_tweet_data.py --records 500 --end "2026-11-05 10:30:00"
 ```
 
-4. Edit `.env` with your configuration if needed.
+That script is one stdlib-only file -- `scripts/data/generate_tweet_data.py`, deleted by `fcc44ef` along
+with the `configs/tweets_config.json` it used to read, with the config folded into flags and constants.
+`RECORDS`, `START`, `END` and `WINDOW_SIZE_SECONDS` at the top of the file are the row count, the
+event-time range and the tumbler: 50 rows, 10:00:00 to 10:05:00 local with `END` exclusive, 60s windows.
+`--records` / `--start` / `--end` / `--window-size-seconds` override them without editing the file, and
+the size has to keep matching `pipeline.window_size_seconds` in config.yaml or the boundaries the script
+reports are not the windows the run fires.
+
+It also prints, for every firing window, the `outputCount` and the per-category counts the run should
+store -- the known answer to check against `GET /runs/{runId}`. It writes `data\raw\tweet_hashtag.csv`,
+the path config.yaml already names, and refuses to replace an existing file unless you pass `--force`,
+because nothing in git can bring that upload back.
+
+Two rules it enforces come from the Java reader rather than from csv practice: rows are sorted by
+timestamp, because `DatasetScan` refuses an unsorted upload instead of letting monotonic watermarks drop
+events quietly, and no text may contain a comma, because `CsvDatasetLoader` splits on the first two
+commas and does no quote handling.
+
+Or skip the file. `python -m frontend.test` uploads a five-row csv it builds in memory, so the HTTP
+route needs nothing on disk at all.
+
+```
+user_id,text,timestamp
+user_1,#DATA is awesome,1793844033600
+user_3,#AI is awesome,1793844033601
+user_2,#PYTHON is awesome,1793844033602
+user_1,#AI is awesome,1793844033603
+user_2,#AI is awesome,1793844033604
+```
+
+That is what the client sends, and what a hand-written file has to look like: header exactly
+`user_id,text,timestamp`, one hashtag per row at minimum, timestamps in non-decreasing order.
 
 ## Usage
 
-### Run the Pipeline
+### Start the API and run a dataset through it
 
-```bash
-# Generate test data
-make setup-data
-
-# Run the complete pipeline
-python scripts/pipeline/run_pipeline.py
+```cmd
+backend\run.bat serve
 ```
 
-### Run the Dashboard
+The port is `server.port` in `backend/src/main/resources/application.properties` (8000 today). The five
+calls below are the whole route, and each id is whatever the call before it printed, so substitute it
+rather than copying the placeholder:
 
-```bash
-make run-dashboard
+```cmd
+curl -X POST -H "Content-Type: text/csv" --data-binary @data\raw\tweet_hashtag.csv "http://localhost:8000/datasets?name=tweet_hashtag.csv"
+curl http://localhost:8000/datasets
+curl -X POST -H "Content-Type: application/json" -d "{\"datasetId\":\"ds-...\"}" http://localhost:8000/runs
+curl http://localhost:8000/runs/run-...
+curl http://localhost:8000/runs/run-.../graph
 ```
 
-### Run Tests
+This route wants a csv on disk to upload, so it needs **Supply a dataset** above; the Python client does
+not, because it builds its own bytes in memory. `python frontend\test.py` is those five calls in one go,
+over its own five-tweet fixture, printing the windows and then the graph of the run it just made -- so it
+needs a listening server and nothing else. An unsorted file is refused at upload by `DatasetScan`,
+before anything is stored: the windows are event-time with a monotonic watermark, so unsorted rows would
+answer 200 and silently drop every event that looks late rather than failing the run. Request and
+response bodies are in `backend/docs/API.md`.
 
-```bash
-# Run all tests
-make test
+### Run the pipeline without HTTP
 
-# Run unit tests only
-make test-unit
-
-# Run with coverage
-make test-cov
+```cmd
+backend\run.bat
 ```
 
-## Demo Scenario
+Uses `dataset.target_dataset` from `backend/src/main/resources/config.yaml` and writes the same tables.
+This is the route that needs the csv from **Supply a dataset** above; with no file at that path it fails
+at startup.
 
-**Tweet/Hashtag Pipeline:**
-```
-Tweets → Extract Hashtags → Filter (#python) → Window (COUNT) → Trending Score
+### Read one stored run's provenance back
+
+```cmd
+backend\run.bat graph run-20261122-1725-2282
 ```
 
-**Known-Answer Test:**
-```
-Input: 5 tweets in 1-minute window
-  - user_1: "Loving #python!" (2 tweets)
-  - user_2: "#python is awesome" (1 tweet)
-  - user_3: "Check out #java" (filtered out)
-  - user_4: "#python #streaming" (1 tweet)
+The job above prints only `window_outputs`; this prints what the provenance capture stored beside them --
+`tin_vertices`, `tin_edges`, `tin_states` and `tin_interactions` -- from the database, starting no job and
+writing no rows. It is the same four tables `GET /runs/{runId}/graph` returns, for anyone with no HTTP
+server up. Paste any id from a previous run, or a wrong one to get the list this database holds. Real
+output, with the columns explained, is in `backend/README.md`.
 
-Output for #python: COUNT = 4
-Expected Attribution: {user_1: 2, user_2: 1, user_4: 1}
+### Exercise the API from Python
+
+```cmd
+.venv\Scripts\activate
+python -m frontend.test
 ```
+
+### Clear the development data
+
+```cmd
+backend\run.bat reset
+```
+
+Moves the database and every uploaded csv to `data\cleared-<when>\` rather than deleting them, and
+refuses while a server is listening. The next `serve` recreates the seven tables before it accepts a
+request, so `GET /runs` on a cleared database answers `[]`.
+
+## Known-Answer Test
+
+The five-tweet fixture in `frontend/test.py` is the smallest case that shows how-much provenance:
+
+```
+Input, one 1-minute window:
+  user_1: "#DATA is awesome"
+  user_3: "#AI is awesome"
+  user_2: "#PYTHON is awesome"
+  user_1: "#AI is awesome"
+  user_2: "#AI is awesome"
+
+Output, as `GET /runs/{runId}` stores it (the extractor upper-cases and drops the `#`):
+  AI      outputCount 3   attribution {user_1: 1, user_2: 1, user_3: 1}
+  DATA    outputCount 1   attribution {user_1: 1}
+  PYTHON  outputCount 1   attribution {user_2: 1}
+```
+
+Every hashtag is keyed separately, so no filtering step is needed, and the attribution counts sum to the
+`outputCount` of the window. `backend/docs/API.md` documents the JSON this comes back as, and
+`scripts/data/generate_tweet_data.py` prints the same three numbers for whatever file it generates, so a
+larger dataset has a known answer to check too.
 
 ## Datasets
 
@@ -340,26 +242,22 @@ Expected Attribution: {user_1: 2, user_2: 1, user_4: 1}
 | v2 | NYC Taxi | Real-world validation | ~10M rows | Weeks 11-12 |
 | v3 | Nexmark benchmark | Performance evaluation | Configurable | Weeks 11-12 |
 
+## Work
+
+Student A (Vincent): Java backend
+
+StudenT B (Leo): Python Frontend
+
 ## Development
 
-### Coding Standards
-- Python 3.10+ with strict type hints
-- Pydantic V2 for data validation
-- See `CODING_STYLE.md` for conventions
-
-### Common Commands
-```bash
-make help           # Show all available commands
-make install        # Install dependencies
-make lint           # Run linters
-make format         # Format code
-make clean          # Clean up artifacts
-```
-
-## Team
-
-- **Student A (Kalifa):** Data Pipeline & Processing
-- **Student B:** Provenance, Storage & Dashboard
+- `backend/README.md` is where the constraints live: the Flink 2.x breaking changes, the version
+  coupling in `pom.xml`, why the sink is hand-written rather than `flink-connector-jdbc`, and the
+  rule that `api/` is the only package allowed to mention Spring.
+- `backend/docs/API.md` is the contract. If you change an endpoint, both that file and
+  `frontend/test.py` need to move with it.
+- The Java tests are the only test suite, and `frontend/test.py` is a smoke test against a live server,
+  not part of it. There is no lint or format step configured; the compiler level is fixed at release 17
+  with `-parameters`.
 
 ## References
 

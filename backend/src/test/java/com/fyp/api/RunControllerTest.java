@@ -24,6 +24,11 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.fyp.model.Attribution;
+import com.fyp.model.Edge;
+import com.fyp.model.Interaction;
+import com.fyp.model.RunGraph;
+import com.fyp.model.State;
+import com.fyp.model.Vertex;
 import com.fyp.model.WindowOutput;
 import com.fyp.pipeline.loader.DatasetFormatException;
 import com.fyp.service.AttributionService;
@@ -198,6 +203,53 @@ class RunControllerTest {
         mvc.perform(get("/runs"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.error").value("IllegalStateException: Connection is closed"));
+    }
+
+    /**
+     * The graph read: four sibling lists, and the intervals keyed by what actually held them. A state's
+     * category is null for the boxes no hashtag keys, and that null is the contract rather than a
+     * missing field.
+     */
+    @Test
+    void aRunReadsBackItsOperatorsTheirFlowsAndTheirIntervals() throws Exception {
+        when(service.findRun(RUN_ID)).thenReturn(Optional.of(FINISHED_RUN));
+        when(service.findGraph(RUN_ID)).thenReturn(new RunGraph(
+                List.of(new Vertex("K1", RUN_ID, "source", "csv dataset " + DATASET_ID + " (2 rows)"),
+                        new Vertex("W1", RUN_ID, "window", "1s tumbling count, keyed by category")),
+                List.of(new Edge(RUN_ID, "K1", "M1")),
+                List.of(new State(RUN_ID, "W1", "AI", 1_000L, 2_000L, 2L,
+                        new Attribution(Map.of("user_1", 2L)), 2_000L),
+                        new State(RUN_ID, "K1", null, 1_000L, 2_000L, 2L, Attribution.empty(), 2_000L)),
+                List.of(new Interaction(RUN_ID, "M1", "W1", "AI", 2_000L, 2L,
+                        new Attribution(Map.of("user_1", 2L))))));
+
+        mvc.perform(get("/runs/" + RUN_ID + "/graph"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.vertices.length()").value(2))
+                .andExpect(jsonPath("$.vertices[0].vertexId").value("K1"))
+                .andExpect(jsonPath("$.vertices[0].vertexType").value("source"))
+                .andExpect(jsonPath("$.vertices[0].runId").doesNotExist())
+                .andExpect(jsonPath("$.edges[0].sourceVertex").value("K1"))
+                .andExpect(jsonPath("$.edges[0].targetVertex").value("M1"))
+                .andExpect(jsonPath("$.states[0].vertexId").value("W1"))
+                .andExpect(jsonPath("$.states[0].timeStart").value(1_000))
+                .andExpect(jsonPath("$.states[0].timeEnd").value(2_000))
+                .andExpect(jsonPath("$.states[0].attribution.user_1").value(2))
+                .andExpect(jsonPath("$.states[1].category").isEmpty())
+                .andExpect(jsonPath("$.interactions[0].sourceVertex").value("M1"))
+                .andExpect(jsonPath("$.interactions[0].category").value("AI"));
+    }
+
+    /** An id that never ran is not a run with an empty graph, so it is answered before the reads. */
+    @Test
+    void aRunIdThatNeverRanHasNoGraphToRead() throws Exception {
+        when(service.findRun(RUN_ID)).thenReturn(Optional.empty());
+
+        mvc.perform(get("/runs/" + RUN_ID + "/graph"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("no run with id " + RUN_ID));
+
+        verify(service, never()).findGraph(RUN_ID);
     }
 
     private static org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder run(

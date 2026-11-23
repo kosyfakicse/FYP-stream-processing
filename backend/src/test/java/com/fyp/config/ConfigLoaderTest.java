@@ -16,6 +16,8 @@ class ConfigLoaderTest {
         assertThat(config.dataset().uploadTtlDays()).isEqualTo(14);
         assertThat(config.flink().parallelism()).isEqualTo(3);
         assertThat(config.pipeline().windowSizeSeconds()).isEqualTo(15);
+        assertThat(config.pipeline().stateTickSeconds()).isEqualTo(5);
+        assertThat(config.pipeline().interactionTickSeconds()).isEqualTo(3);
         assertThat(config.pipeline().batchSize()).isEqualTo(7);
         assertThat(config.pipeline().duckdbFile()).isEqualTo("data/test.duckdb");
     }
@@ -80,6 +82,39 @@ class ConfigLoaderTest {
         assertThatThrownBy(() -> ConfigLoader.load("no-such-config.yaml"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("no-such-config.yaml");
+    }
+
+    /**
+     * The check runs on the way out of the loader, so the job and {@code POST /runs} cannot disagree
+     * about it. Seven seconds straddles two 60-second windows, and the tick rows would add up to more
+     * than the window reports without anything in the data naming the cause.
+     */
+    @Test
+    void rejectsATickThatStraddlesTheWindow() {
+        assertThatThrownBy(() -> ConfigLoader.load("config-straddling-tick.yaml"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("state_tick_seconds = 7")
+                .hasMessageContaining("window_size_seconds = 60");
+    }
+
+    /**
+     * A config written before the ticks existed binds them to 0 rather than failing to parse, so the
+     * message has to name the key that went missing instead of reporting a divisibility oddity.
+     */
+    @Test
+    void namesTheKeyWhenATickWasLeftOut() {
+        assertThatThrownBy(() -> new PipelineConfig(60, 0, 60, 100, "data/x.duckdb").validateTicks())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("state_tick_seconds must be positive, is 0");
+    }
+
+    @Test
+    void shipsTicksThatDivideItsWindow() {
+        PipelineConfig config = ConfigLoader.load().pipeline();
+
+        assertThat(config.stateTickSeconds()).isLessThanOrEqualTo(config.windowSizeSeconds());
+        assertThat(config.windowSizeSeconds() % config.stateTickSeconds()).isZero();
+        assertThat(config.windowSizeSeconds() % config.interactionTickSeconds()).isZero();
     }
 
     @Test

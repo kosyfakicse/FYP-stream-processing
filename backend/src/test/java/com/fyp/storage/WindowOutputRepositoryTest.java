@@ -22,7 +22,7 @@ class WindowOutputRepositoryTest {
 
     @Test
     void writesEveryOutputInOneBatchWithRunIdAndVertexAttached() {
-        repository.insertAll("run-20261114-1836-a7f3", List.of(PYTHON, JAVA));
+        repository.insertAll("run-20261114-1836-a7f3", "W1", List.of(PYTHON, JAVA));
 
         assertThat(sql.batches).hasSize(1);
         RecordingExecutor.Call batch = sql.lastBatch();
@@ -40,7 +40,7 @@ class WindowOutputRepositoryTest {
 
     @Test
     void issuesNothingForAnEmptyBatch() {
-        assertThat(repository.insertAll("run-1", List.of())).isZero();
+        assertThat(repository.insertAll("run-1", "W1", List.of())).isZero();
         assertThat(sql.batches).isEmpty();
     }
 

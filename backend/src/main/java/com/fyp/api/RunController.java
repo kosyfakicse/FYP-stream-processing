@@ -17,6 +17,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.fyp.model.Edge;
+import com.fyp.model.Interaction;
+import com.fyp.model.RunGraph;
+import com.fyp.model.State;
+import com.fyp.model.Vertex;
 import com.fyp.model.WindowOutput;
 import com.fyp.pipeline.loader.DatasetFormatException;
 import com.fyp.service.AttributionService;
@@ -25,12 +30,14 @@ import com.fyp.storage.Run;
 
 /**
  * {@code POST /runs} takes a dataset id and returns a run id; {@code GET /runs} and
- * {@code GET /runs/{runId}} read back what those runs stored.
+ * {@code GET /runs/{runId}} read back what those runs stored, and
+ * {@code GET /runs/{runId}/graph} reads back what they recorded about themselves.
  *
  * <p>The class owns the noun {@code run} and the path is the collection, because POST creates one
  * member of it. The reads hang off the same noun so a run id stays a key a client can come back with
  * instead of a number it has to remember: the list is what a run picker renders, the detail is the
- * run's own row plus every window it fired.
+ * run's own row plus every window it fired, and the graph is the run's own network under a subresource
+ * of that same detail path.
  *
  * <p>The body of a POST names an upload rather than carrying one, because an upload that got here
  * through {@code POST /datasets} was already scanned -- and a scan is what proves the csv is sorted by
@@ -67,6 +74,29 @@ public class RunController {
 
     public record RunDetailResponse(String runId, Instant startedAt, Instant finishedAt,
             String dataset, List<WindowResponse> windows) {
+    }
+
+    public record VertexResponse(String vertexId, String vertexType, String description) {
+    }
+
+    public record EdgeResponse(String sourceVertex, String targetVertex) {
+    }
+
+    /**
+     * {@code category} is null for the rows no hashtag keys -- the source and map boxes, and the
+     * {@code K1 -> M1} interaction -- because the column answers which hashtag a row is about, which is a
+     * question those rows were never asked.
+     */
+    public record StateResponse(String vertexId, String category, long timeStart, long timeEnd,
+            long quantity, Map<String, Long> attribution, long firedAt) {
+    }
+
+    public record InteractionResponse(String sourceVertex, String targetVertex, String category,
+            long timestamp, long quantity, Map<String, Long> attribution) {
+    }
+
+    public record GraphResponse(List<VertexResponse> vertices, List<EdgeResponse> edges,
+            List<StateResponse> states, List<InteractionResponse> interactions) {
     }
 
     public record ErrorResponse(String error) {
@@ -161,6 +191,65 @@ public class RunController {
             LOG.error("reading run {} failed", runId, storageFailure);
             return failed(storageFailure);
         }
+    }
+
+    /**
+     * The network a run recorded about itself: its operators, the flows between them, what each
+     * operator held over an interval and how much each flow carried.
+     *
+     * <p>Four sibling lists rather than one nested graph, because that is what a run stores and a
+     * caller drawing a picture needs the vertices and the edges apart from the intervals. Times are
+     * epoch milliseconds, the same unit {@code windowStart} and {@code windowEnd} are in; a state's map
+     * is keyed by whoever fed that operator and an interaction's map by the vertex it came from, so the
+     * two are compared by quantity, never by key.
+     *
+     * <p>404 for an id that never ran, as every run read here does. A run that recorded nothing answers
+     * 200 with four empty lists -- the run row is what says an id is a run, and the empty lists say
+     * nothing went wrong.
+     */
+    @GetMapping("/runs/{runId}/graph")
+    public ResponseEntity<?> getRunGraph(@PathVariable String runId) {
+        try {
+            GraphResponse graph;
+            synchronized (runLock) {
+                if (service.findRun(runId).isEmpty()) {
+                    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                            .body(new ErrorResponse("no run with id " + runId));
+                }
+                graph = graph(service.findGraph(runId));
+            }
+            return ResponseEntity.ok(graph);
+        } catch (RuntimeException storageFailure) {
+            LOG.error("reading graph of run {} failed", runId, storageFailure);
+            return failed(storageFailure);
+        }
+    }
+
+    private static GraphResponse graph(RunGraph recorded) {
+        return new GraphResponse(
+                recorded.vertices().stream().map(RunController::vertex).toList(),
+                recorded.edges().stream().map(RunController::edge).toList(),
+                recorded.states().stream().map(RunController::state).toList(),
+                recorded.interactions().stream().map(RunController::interaction).toList());
+    }
+
+    private static VertexResponse vertex(Vertex vertex) {
+        return new VertexResponse(vertex.vertexId(), vertex.vertexType(), vertex.description());
+    }
+
+    private static EdgeResponse edge(Edge edge) {
+        return new EdgeResponse(edge.sourceVertex(), edge.targetVertex());
+    }
+
+    private static StateResponse state(State state) {
+        return new StateResponse(state.vertexId(), state.category(), state.timeStart(),
+                state.timeEnd(), state.quantity(), state.attribution().sourceQuantities(),
+                state.firedAt());
+    }
+
+    private static InteractionResponse interaction(Interaction row) {
+        return new InteractionResponse(row.sourceVertex(), row.targetVertex(),
+                row.category(), row.timestamp(), row.quantity(), row.attribution().sourceQuantities());
     }
 
     private static RunSummaryResponse summary(Run run) {

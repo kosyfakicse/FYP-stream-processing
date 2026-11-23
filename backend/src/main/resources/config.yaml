@@ -31,5 +31,16 @@ flink:
 
 pipeline:
   window_size_seconds: 60
+
+  # How often the graph writes about the pipeline. They are independent knobs -- a lifecycle recorded
+  # finely and a handoff recorded coarsely is the reason both exist -- and each must DIVIDE the window,
+  # because a tick that straddles a window boundary cannot be summed into that window's number. The job
+  # refuses to start otherwise.
+  #
+  # Both are 60 today: W1's box is snapshotted by the window operator itself, which only wakes up when a
+  # window closes, so a finer state tick than the window needs that operator rebuilt. See docs/TIN.md.
+  state_tick_seconds: 60
+  interaction_tick_seconds: 60
+
   batch_size: 100
   duckdb_file: "../data/attribution.duckdb"
