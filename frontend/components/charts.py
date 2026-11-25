@@ -253,6 +253,168 @@ def create_flow_network_chart(
     )
     return fig
 
+def create_tin_network_chart(
+    vertices: list,
+    edges: list,
+    run_id: str = "",
+    highlighted: set | None = None,
+    highlighted_edges: set | None = None,
+) -> go.Figure:
+    """
+    Draw the TIN operator graph (vertices + edges).
+
+    vertices: list of dicts with vertexId, vertexType, description
+    edges: list of dicts with sourceVertex, targetVertex
+    highlighted: optional set of vertexIds to emphasize
+    """
+    if not vertices:
+        fig = go.Figure()
+        fig.update_layout(title="No vertices", height=300)
+        return fig
+
+    highlighted = highlighted or set()
+    highlighted_edges = highlighted_edges or set()
+
+    type_order = {"source": 0, "map": 1, "filter": 2, "window": 3, "sink": 4}
+    type_colors = {
+        "source": "#ff7f0e",
+        "map": "#1f77b4",
+        "filter": "#2ca02c",
+        "window": "#d62728",
+        "sink": "#9467bd",
+    }
+
+    # Sort vertices by pipeline order, then by id
+    vertices_sorted = sorted(
+        vertices,
+        key=lambda v: (
+            type_order.get(v.get("vertexType", ""), 99),
+            v.get("vertexId", ""),
+        ),
+    )
+
+    # Horizontal layout by type order
+    x_spacing = 1.0
+    positions = {}
+    type_y_idx = {t: 0 for t in type_order}
+    for v in vertices_sorted:
+        vid = v.get("vertexId")
+        vtype = v.get("vertexType", "unknown")
+        x = type_order.get(vtype, 5) * x_spacing
+        y = type_y_idx.get(vtype, 0)
+        positions[vid] = (x, y)
+        type_y_idx[vtype] = type_y_idx.get(vtype, 0) + 1
+
+    # Build edges
+    edge_x, edge_y = [], []
+    lit_edge_x, lit_edge_y = [], []
+
+    for edge in edges:
+        src = edge.get("sourceVertex")
+        tgt = edge.get("targetVertex")
+        if src not in positions or tgt not in positions:
+            continue
+        x0, y0 = positions[src]
+        x1, y1 = positions[tgt]
+        edge_key = (src, tgt)
+        if edge_key in highlighted_edges or (highlighted and (src in highlighted or tgt in highlighted)):
+            lit_edge_x.extend([x0, x1, None])
+            lit_edge_y.extend([y0, y1, None])
+        else:
+            edge_x.extend([x0, x1, None])
+            edge_y.extend([y0, y1, None])
+
+    fig = go.Figure()
+
+    # Dim edges
+    if edge_x:
+        fig.add_trace(
+            go.Scatter(
+                x=edge_x,
+                y=edge_y,
+                mode="lines",
+                line=dict(width=1.5, color="rgba(100,116,139,0.28)"),
+                hoverinfo="none",
+                showlegend=False,
+            )
+        )
+
+    # Highlighted edges
+    if lit_edge_x:
+        fig.add_trace(
+            go.Scatter(
+                x=lit_edge_x,
+                y=lit_edge_y,
+                mode="lines",
+                line=dict(width=2.5, color="#ffe566"),
+                hoverinfo="none",
+                showlegend=False,
+            )
+        )
+
+    # Nodes
+    node_x, node_y, node_text, node_color, node_hover = [], [], [], [], []
+    node_size, node_line_color, node_line_width = [], [], []
+
+    for v in vertices_sorted:
+        vid = v.get("vertexId", "")
+        vtype = v.get("vertexType", "unknown")
+        desc = v.get("description", "")
+        x, y = positions.get(vid, (0, 0))
+
+        is_lit = vid in highlighted
+        base_color = type_colors.get(vtype, "#64748b")
+
+        node_x.append(x)
+        node_y.append(y)
+        node_text.append(vid)
+        node_color.append(base_color)
+        node_size.append(28 if is_lit else 22)
+        node_line_color.append("#ffe566" if is_lit else "white")
+        node_line_width.append(3 if is_lit else 1.5)
+
+        hover = f"<b>{vid}</b><br>Type: {vtype}"
+        if desc:
+            hover += f"<br>{desc}"
+        node_hover.append(hover)
+
+    fig.add_trace(
+        go.Scatter(
+            x=node_x,
+            y=node_y,
+            mode="markers+text",
+            text=node_text,
+            textposition="bottom center",
+            textfont=dict(size=11, color="#e2e8f0"),
+            marker=dict(
+                size=node_size,
+                color=node_color,
+                line=dict(width=node_line_width, color=node_line_color),
+                opacity=1.0,
+            ),
+            hovertext=node_hover,
+            hoverinfo="text",
+            showlegend=False,
+        )
+    )
+
+    title = "TIN Graph"
+    if run_id:
+        title = f"TIN Graph · {run_id}"
+
+    fig.update_layout(
+        title=title,
+        showlegend=False,
+        hovermode="closest",
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        margin=dict(l=40, r=40, t=50, b=40),
+        height=420,
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+    return fig
+
 
 # ------------------------------------------------------------------
 # Versioning / Window Comparison

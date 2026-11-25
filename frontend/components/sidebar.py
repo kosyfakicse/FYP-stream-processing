@@ -55,9 +55,8 @@ def render_sidebar():
         st.markdown("### Navigation")
         st.page_link("pages/1_Overview.py", label="Overview")
         st.page_link("pages/2_Query.py", label="Query")
+        st.page_link("pages/3_TIN_Network.py", label="TIN Network")
         st.page_link("pages/4_Insert_Data.py", label="Insert Data")
-        # Optional:
-        # st.page_link("pages/3_TIN_Network.py", label="TIN Network")
 
         st.markdown("---")
 

@@ -14,6 +14,12 @@ def get_run(run_id: str):
     resp.raise_for_status()
     return resp.json()
 
+def get_run_graph(run_id: str):
+    """Fetch the TIN graph for a run (vertices, edges, states, interactions)."""
+    resp = requests.get(f"{BASE}/runs/{run_id}/graph", timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
 def windows_to_df(run_data: dict) -> pd.DataFrame:
     """Turn the windows list from GET /runs/{id} into a DataFrame."""
     windows = run_data.get("windows", [])

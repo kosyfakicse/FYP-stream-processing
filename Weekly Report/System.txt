@@ -1,0 +1,145 @@
+1. WHAT THIS SYSTEM IS
+
+This system is a Temporal Provenance and Source-Attribution Analytics platform
+for tweet streams.
+
+This system tracks WHO contributed to each hashtag, HOW MUCH each user contributed
+(both raw count and percentage weight), and HOW those contributions change across
+event-time windows.
+
+It makes of:
+- A Java + Apache Flink streaming engine that processes tweets in event-time
+  tumbling windows and computes each user source attribution.
+- A Spring Boot REST API + DuckDB storage layer that safely manages datasets
+  and isolated pipeline runs (runId).
+- A Python Streamlit web interface where users can prepare data, run the
+  pipeline, and interactively explore 5 provenance views.
+
+
+2. HOW TO USE THE SYSTEM
+
+STEP 1: Prepare & Upload Data (Page: 4_Insert_Data.py)
+Open the Streamlit UI and go to the Insert Data page. You have three ways to
+prepare a tweet dataset (with required columns: user_id, text, timestamp):
+  1) Upload a .csv file from your computer.
+
+  2) Generate a synthetic dataset using system parameters (number of users,
+     hashtags, events, and time range).
+
+  3) Edit or add individual tweet rows directly in the interactive table to
+     test custom edge cases (e.g., one user spamming a hashtag vs. many users).
+
+Before uploading, the system validates that required headers exist and that
+timestamps are in increasing order so invalid data cannot break the Flink
+watermarking engine. Once uploaded, the backend stores the dataset and returns
+a unique datasetId.
+
+
+STEP 2: Run the Temporal Attribution Pipeline (Page: 4_Insert_Data.py)
+Select your datasetId and click Run.
+- The frontend triggers POST /runs on the Spring Boot backend.
+- The backend creates a new runId, runs the Apache Flink streaming job over the
+  tweets, groups events into event-time tumbling windows, calculates every
+  user's contribution count and weight per hashtag, and saves the results to
+  DuckDB.
+
+
+STEP 3: Check High-Level Activity (Page: 1_Overview.py)
+Select your runId on the Overview page to get an immediate summary of the run:
+- Top 5 Trending Hashtags by total attributed volume.
+- Latest 5 Time Windows showing recent hashtag counts and activity.
+
+
+STEP 4: Explore Lineage & Attribution (Page: 2_Query.py)
+Go to the Query page, select your runId, and use the 5 analytical views to
+investigate the results from different angles:
+
+  1) Backward Provenance Query
+     - How to use: Select a hashtag and a specific window (output_id).
+     - What it shows: A Contributor Table and Pie and Bar charts breaking down
+       each user's exact contribution count and percentage weight. This tells
+       you whether a trend came from broad  participation or a single dominant user.
+     - Answer the question: "Who lead to this specific window output?"
+
+  2) Forward Query
+     - How to use: Select a user_id.
+     - What it shows: How many time windows that user impacted, their total
+       attributed volume, and a table of every window and hashtag they
+       contributed to.
+     - Answer the question: "Where did a specific user have impact?"
+
+  3) Temporal Lineage Query
+     - How to use: Select a hashtag.
+     - What it shows: A time-series trend chart and a window-by-window breakdown
+       table showing spikes, drops, or sustained activity across windows.
+     - Answer the question: "How did a hashtag's volume evolve over time?"
+
+  4) Flow Lineage Query
+     - How to use: Set a Minimum Flow Quantity threshold.
+     - What it shows: End-to-end provenance flows from users to target
+       hashtags and a flow table, filtering out low-volume noise so the most
+       influential contribution paths stand out.
+     - Answer the question: "What are the strongest end-to-end user to hashtag contribution paths"
+
+  5) Versioning & Window Comparison
+     - How to use: Select a hashtag and pick two time windows (Window A vs.
+       Window B).
+     - What it shows: The net count change, a side-by-side comparison bar chart,
+       and a difference table showing how individual user weights shifted
+       between the two windows.
+     - Answer the question: "What changed between two time windows for the same hashtag?"
+
+
+3. WHAT WILL GET AT THIS SYSTEM
+
+After running a dataset through the system, you get clear analytical answers and
+structured outputs:
+
+  1) Familiarity with Temporal Attribution: By creating or editing custom CSV
+     test cases and running them through the Flink pipeline under a unique runId,
+     you see directly how event-time watermarks assign tweets into tumbling windows
+     and convert raw tweet counts into per-user contribution counts and percentage weights.
+
+  2) Understanding the five Query:
+     - Backward Provenance shows who caused a single result (a single user or broad
+       crowd participation)
+     - Forward Provenance shows how one user's total impact is across all time
+       windows and hashtags.
+     - Temporal Lineage shows the trend of the hashtag's activity (a sudden jump, a
+       drop, or steady over time)
+     - Flow Lineage filters out small noise so only the strongest user-to-hashtag
+       path is shown
+     - Versioning Comparison shows what changed between two time windows—both
+       the total count change and how each user's share shifted.
+
+4. PROJECT STATUS: WHAT IS DONE AND UNFINISHED
+[DONE]
+- Dataset ingestion, validation (required headers and non-decreasing
+  timestamps), synthetic generation, and custom row editing via 4_Insert_Data.py
+  and /datasets endpoints (POST, GET, GET /{datasetId}, DELETE /{datasetId}).
+- Pipeline execution and run history via POST /runs, GET /runs, and
+  GET /runs/{runId}, stamped with unique runId values and persisted to
+  DuckDB (runs and window_outputs), plus standalone execution via
+  AttributionJob.java.
+- Flink event-time watermarking, hashtag extraction, tumbling window
+  attribution (contribution counts and weights), and batched Sink V2 flushing
+  (DuckDbSink / DuckDbSinkWriter via SqlExecutor).
+- Overview page (1_Overview.py: top 5 trending hashtags and latest 5 windows)
+  and all 5 provenance query views in 2_Query.py (Backward, Forward, Temporal
+  Lineage, Flow Lineage, and Versioning & Window Comparison).
+
+[UNFINISHED]
+- TIN Network page (3_TIN_Network.py): Not finished yet.
+- TIN provenance graph tables: tin_vertices, tin_edges, tin_interactions, and
+  tin_states exist as DDL in schema.sql with no reads or writes yet, and
+  runs.provenance_enabled is written as false.
+- Kafka streaming source: Not wired up yet (no kafka configuration block in
+  config.yaml yet).
+- Automatic expired upload cleanup: DatasetService.collectExpired() exists,
+  but no scheduler or cron job triggers it automatically.
+- Multi-user / async run scaling: Runs currently execute synchronously under a
+  lock sharing a connection with reads (future work includes moving the lock
+  into AttributionService with separate read connections and optional async
+  202 Accepted + status polling).
+- Cluster-ready Flink dependency scope: Flink core is currently in compile
+  scope rather than provided scope for an external Flink cluster.

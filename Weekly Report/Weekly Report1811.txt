@@ -2,13 +2,22 @@
 Java 17, Apache Flink 2.2.1, Spring Boot 4.1.2, Maven 3.9.9, streamlit 1.30.0
 
 2. SYSTEM
+What the system is:
+A temporal provenance and source-attribution analytics system for tweet streams.
+Instead of only counting how often hashtags appear, it tracks which users contributed to each hashtag within event-time tumbling windows,
+calculate each user's contribution count and weight, and lets users trace and compare provenance across time.
+
 Backend use java and Fontend use python
 
 Using API for connecting backend and frontend
 
 API:
+Why API is needed: DuckDB enforces a strict single-writer process lock
+If the Python frontend opened the .duckdb file directly while the pipeline was running, the process would crash with a file lock conflict
+Using API allow frontend to trigger job and query result safely without database lock contention
+
 Dataset Endpoints (/datasets):
-POST /datasets: Validate and store raw CSV upload, returning a datasetId
+POST /datasets: Validate and store raw CSV upload, returning a datasetId.
 
 GET /datasets: List all store dataset
 
@@ -24,62 +33,104 @@ GET /runs: List all execution run, newest first
 GET /runs/{runId}: Retrieve run data alongside all computed window attribution output.
 
 Backend:
-The core backend streaming pipeline independent of the Spring Boot.
+The core backend streaming pipeline is independent of the Spring Boot.
 
-api/: Sprinng Boot REST controller. Only package reference Spring Boot.
+api/: Handle the HTTP request, parses request parameter and format the HTTP status code and response. Only package that use Spring Boot.
 
-service/: Logic layer for connecting the controller and storage layer.
+service/: Logic layer for connecting the controller and storage layer. For storing, searching, expiring the dataset and serializing pipeline run and read.
+Why it is needed:
+Calling repository rather than handling HTTP directly.
 
 pipeline/: The core proccessing engine,
-loader/: Handle CSV validation and parsing
-flink/: Implements watermark assignment, hashtag extraction, stateful attribution calculation
-sink/: Custom Sink V2 implementation, write data to DuckDB through its driver
 
-storage/: Database access layer SqlExecutor interface by DuckDB
+pipeline/loader/: Call when ingesting or running a dataset for validating CSV header and timestamp order, and parse row into tweet record and throw exeception when the input format is invalid
+Why it is needed:
+Flink will assign watermark without checking the data, so we need to check its valid before it go in Flink for a clean dataset
 
-APIapplication.java for job from frontend
+pipeline/flink/: Execute inside the Flink streaming job to assign event-time watermarks, extract hashtag from tweet, and compute each source attribution across event-time tumbling window
+Why it is needed:
+Window counts only show totals, not who lead to them or when event occurred in event time.
+Assign watermark can keep event-time windowing accurate, extracting hashtag split into different category
 
-AttributionJob.java for single job (terminal entry)
+pipeline/sink/: Used for the end of the Flink pipeline to buffer window attribution result into batch and sending it out.
+Why it is needed:
+Writing every window result to DuckDB one row at a time adds database overhead, while coupling the sink directly to a live DuckDB connection makes unit testing harder.
+Buffering result into batch and flushing them through a sink/executor boundary make it efficient and keep batching testable.
+
+storage/: Database access layer SqlExecutor interface by DuckDB. Read and write the dataset, run and window output filter by runID.
+Why it is needed:
+Keep raw SQL and runId filtering isolated from logic and HTTP code
+
+APIapplication.java: Run to start the Spring Boot HTTP server for the request from the frontend.
+Why it is needed:
+Frontend can safely to read result over REST instead of calling DuckDB directly
+
+AttributionJob.java: Run for a single standalone pipeline execution against the dataset, printing the result window and attribution directly
+Why it is needed:
+Run the single pipeline job directly from the terminal
 
 Frontend:
 1_Overview.py:
 For summary the top 5 trending hashtags and latest 5 window for the pipeline
+Why it is needed:
+Quickly highlights dominant trendsL Showing the summary of overall activity.
 
 2_Query.py:
 All the query will filting by run ID
 
-Backend Provenance Query:
+Backward Provenance Query:
 Filter window by hashtag and output_id, it will show the Contributor Table and using pie chart and bar chart to show the weight of different user
+Why it is needed:
+Counting single window count into individual user constribution and percentages so that we can tell whether volume coame from broad participation or one user
+Answer the question "Who lead to this specific window output?"
 
 Forward Query:
 Select user for the forward query, it will show how much impacted window and total attributed volume and show the data table
+Why it is needed:
+Tracing one user across all windows and hashtags to measure his total attributed volume and reach
+Answer the question "Where did a user have impact?"
 
 Temporal Lineage Query:
 Select Hashtag and show the trend chart of the volume evolution of time window and a window breakdown table
+Why it is needed:
+Plots window-by-window volume changes to see is it the spike, drop, or sustained activity across time
+Answer the question "How did a hashtag's volume evolve over time?"
 
 Flow Lineage Query:
 Filter Minimum Flow Quantity and showing end-to-end provenance flow from user to target hashtag, also with a flow table
+Why it is needed:
+Filter out low-volume noise using a minimum flow threshold so the key path can stand out
+Answer the question "What are the strongest end-to-end user to hashtag contribution paths"
 
 Versioning & Window Comparison:
 Compares contributor weight and output count between two selected window for the same hashtag. Display net count change, a comparison bar chart and a different table
+Why it is needed:
+Comparing two windows side by side to show net count differences and shifts in contributor weights
+Answer the question "What changed between two time windows for the same hashtag?"
 
 4_Insert_Data.py:
 For dataset .csv checking and upload, system parameter generation and full custom data editing by using the API of backend
-
+Why it is needed:
+Catch bad data before running the pipeline, invalid data can't go in the pipeline
+Makes it easy to rewrite and customize test cases directly, without just editing CSV files.
 
 3. SYSTEM WORKFLOW
 Step 1:
-User prepare a dataset and uploads it to the backend by POST /datasets return a dataset ID
+User prepare a dataset and uploads it to the backend by POST /datasets return a dataset ID.
+Frontend send a API to POST /datasets, backend will validate the require header and ensure timestamp are not decreasing and return a datasetID.
 
 Step 2:
-Frontend send POST /runs to trigger the pipeline execution with dataset ID to Spring Boot backend, executing the Flink streaming job and return a run ID
+Frontend send datasetID to POST /runs on the Spring Boot
+It will use the single writer execution lock and register a new runID in DuckDB, and launch the Flink streaming job
 
 Step 3:
-Flink engine process the tweet dataset using event-time tumbling window and stateful attribution function, writing the result window output and contributor weight into DuckDB through Sink V2.
+Backend parse the store CSV into tweet record, assign event-time watermark, split tweet by hashtag.
+Group event into event-time tubling window and track every user contribution count and weight, which save the result into DuckDB output table stamp with runID
 
 Step 4:
-Frontend get the run data and window result using API call filter by the run ID.
+When POST /runs return the runID, the frontend query GET /runs and GET /runs/{runId} to search the run data and all computed window output and attribution
 
 Step 5:
-The process data show on the table and chart on the 5 query.
+1_Overview.py summarizes the top 5 trending hashtags and the latest 5 windows for a quick check.
+2_Query.py filter the processed record by runId and renders tables and interactive charts across the 5 provenance views.
 
